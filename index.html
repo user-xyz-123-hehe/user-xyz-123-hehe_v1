@@ -152,19 +152,39 @@
     <iframe src="https://script.google.com/macros/s/AKfycbxqFEUINjN708d9WfBDbnTOpzcYRkXtbawFWtycQwV4ki-SqzDqMblXKNrTcdsUr_dt/exec" allow="geolocation"></iframe>
   </div>
 
-  <script>
+<script>
+    // Bulletproof Splash Screen Fader
+    let splashHidden = false;
     function hideSplash() {
+      if (splashHidden) return;
+      splashHidden = true;
       const splash = document.getElementById('splash-screen');
       splash.style.opacity = '0';
       setTimeout(() => splash.style.display = 'none', 500); 
     }
+
+    // 1. Listen for the exact "Ready" signal from Google Apps Script
+    window.addEventListener('message', (event) => {
+      if (event.data === 'hideSplash') {
+        hideSplash();
+      }
+    });
+
+    // 2. FAILSAFE: If Google takes longer than 6 seconds or fails, force the splash screen to hide anyway
+    setTimeout(hideSplash, 6000);
+
+    // 3. Offline Check
     if (!navigator.onLine) {
       document.getElementById('app-wrapper').style.display = 'none';
       document.getElementById('splash-screen').style.display = 'none';
       document.getElementById('offline-fallback').style.display = 'flex';
     }
+
+    // 4. PWA Service Worker
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js');
+      });
     }
   </script>
 </body>
