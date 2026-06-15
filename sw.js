@@ -1,10 +1,10 @@
-const CACHE_NAME = 'attendance-wrapper-v1';
+const CACHE_NAME = 'gdl-attendance-wrapper-v2';
 const ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/icon-192.png',
-  '/icon-512.png'
+  './',
+  './index.html',
+  './manifest.json',
+  './icon-192.png',
+  './icon-512.png'
 ];
 
 self.addEventListener('install', event => {
