@@ -29,7 +29,11 @@
   </style>
 </head>
 <body>
-
+  <!-- CUSTOM INSTALL BUTTON -->
+  <button id="install-btn" style="display: none; position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: #3a86ff; color: white; border: none; padding: 14px 28px; border-radius: 50px; font-weight: 800; font-size: 15px; box-shadow: 0 10px 25px rgba(58, 134, 255, 0.4); z-index: 10000; cursor: pointer;">
+    📲 Install Attendance App
+  </button>
+  
   <div id="offline-fallback">
     <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 15px;"><path d="m2 2 20 20"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><path d="M2 8.82a15 15 0 0 1 4.17-2.65"/><path d="M10.66 5c4.01-.36 8.14.9 11.34 3.82"/></svg>
     <h2 style="margin: 0 0 10px 0;">No Connection</h2>
@@ -56,6 +60,32 @@
       });
     }
 
+    // 4. MANUAL PWA INSTALL ENGINE
+    let deferredPrompt;
+    const installBtn = document.getElementById('install-btn');
+
+    // Catch Chrome's hidden install event
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault(); // Stop Chrome's default behavior
+      deferredPrompt = e; // Save the event for later
+      installBtn.style.display = 'block'; // Show our custom button
+    });
+
+    // Force the prompt when the button is tapped
+    installBtn.addEventListener('click', async () => {
+      if (deferredPrompt) {
+        deferredPrompt.prompt(); // Trigger Chrome's native install popup
+        const { outcome } = await deferredPrompt.userChoice;
+        deferredPrompt = null; // Clear the event once used
+        installBtn.style.display = 'none'; // Hide the button
+      }
+    });
+
+    // Hide the button permanently once the app is installed
+    window.addEventListener('appinstalled', () => {
+      installBtn.style.display = 'none';
+    });
+    
     // 3. LISTEN FOR PULL-TO-REFRESH SIGNAL FROM IFRAME
     window.addEventListener('message', (event) => {
       if (event.data === 'triggerRefresh') {
