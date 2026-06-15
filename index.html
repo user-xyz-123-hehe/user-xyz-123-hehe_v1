@@ -87,14 +87,6 @@
           .catch(err => console.error('PWA Failed', err));
       });
     }
-
-    // 3. Listen for Pull-to-Refresh from Google Script
-    window.addEventListener('message', (event) => {
-      if (event.data === 'triggerRefresh') {
-        window.location.reload(); 
-      }
-    });
-
     // 4. PROFESSIONAL PWA INSTALL ENGINE
     let deferredPrompt;
     const installBtn = document.getElementById('install-btn');
