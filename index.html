@@ -2,63 +2,59 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   
   <link rel="manifest" href="./manifest.json">
-  <meta name="theme-color" content="#ffffff">
+  <meta name="theme-color" content="#f4f7f6"> 
   
   <title>Attendance Portal</title>
   <style>
     body, html { 
       margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; 
-      background: #f4f7f6; font-family: system-ui, -apple-system, sans-serif;
+      background-color: #f4f7f6; font-family: system-ui, -apple-system, sans-serif;
     }
     
-    .wrapper { position: absolute; left: 0; width: 100vw; top: -55px; height: calc(100vh + 55px); }
+    .wrapper { position: absolute; left: 0; width: 100vw; top: -55px; height: calc(100vh + 55px); background-color: #f4f7f6; }
     @media (min-width: 600px) { .wrapper { top: -45px; height: calc(100vh + 45px); } }
     @media (min-width: 1024px) { .wrapper { top: -36px; height: calc(100vh + 36px); } }
     
-    iframe { width: 100%; height: 100%; border: none; }
+    iframe { width: 100%; height: 100%; border: none; background-color: transparent; }
     
     #offline-fallback { 
       display: none; height: 100vh; width: 100vw; flex-direction: column; 
       align-items: center; justify-content: center; text-align: center; color: #2b2d42;
     }
 
-    #install-btn {
-      display: none; position: fixed; top: 16px; right: 16px;
-      background-color: #007bff; color: #ffffff; border: none; padding: 8px 18px;
-      border-radius: 6px; font-size: 14px; font-weight: 600; letter-spacing: 0.3px;
-      box-shadow: 0 2px 6px rgba(0, 123, 255, 0.3); cursor: pointer; z-index: 10000;
-      transition: background-color 0.2s ease, transform 0.1s ease; font-family: inherit;
-    }
-    #install-btn:hover { background-color: #0056b3; }
-    #install-btn:active { transform: scale(0.96); }
-
-    /* --- BEAUTIFUL SPLASH SCREEN CSS --- */
+    /* PREMIUM SPLASH SCREEN */
     #splash-screen {
       position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-      background: #f4f7f6; z-index: 99999; display: flex; flex-direction: column;
+      background-color: #f4f7f6; z-index: 99999; display: flex; flex-direction: column;
       align-items: center; justify-content: center; transition: opacity 0.5s ease;
     }
+    
     .pulse-logo {
-      width: 110px; margin-bottom: 20px; border-radius: 12px;
+      width: 160px; /* Better sizing */
+      max-width: 70%;
+      object-fit: contain;
+      mix-blend-mode: multiply; /* MAGIC TRICK: Makes the white background transparent! */
+      margin-bottom: 25px; 
       animation: pulse 1.5s infinite ease-in-out;
     }
+    
     @keyframes pulse { 
-      0% { transform: scale(0.96); opacity: 0.8; } 
-      50% { transform: scale(1.04); opacity: 1; } 
-      100% { transform: scale(0.96); opacity: 0.8; } 
+      0% { transform: scale(0.97); opacity: 0.85; } 
+      50% { transform: scale(1.03); opacity: 1; } 
+      100% { transform: scale(0.97); opacity: 0.85; } 
     }
   </style>
 </head>
 <body>
 
   <div id="splash-screen">
-    <img src="./icon-192.png" alt="GDL Logo" class="pulse-logo">
-    <div style="color: #8d99ae; font-weight: 600; font-size: 13px; letter-spacing: 0.5px;">Connecting to Server...</div>
+    <img src="./icon-512.png" alt="GDL Logo" class="pulse-logo">
+    <div style="color: #8d99ae; font-weight: 600; font-size: 13px; letter-spacing: 0.5px;">Connecting Securely...</div>
   </div>
 
   <div id="offline-fallback">
@@ -67,18 +63,15 @@
     <p style="margin: 0; color: #8d99ae; font-size: 14px; max-width: 250px;">You must be connected to the internet to launch the attendance portal.</p>
   </div>
 
-  <button id="install-btn">Install</button>
-
   <div class="wrapper" id="app-wrapper">
     <iframe src="https://script.google.com/macros/s/AKfycbxqFEUINjN708d9WfBDbnTOpzcYRkXtbawFWtycQwV4ki-SqzDqMblXKNrTcdsUr_dt/exec" allow="geolocation"></iframe>
   </div>
 
   <script>
-    // Splash Screen Fader
     function hideSplash() {
       const splash = document.getElementById('splash-screen');
       splash.style.opacity = '0';
-      setTimeout(() => splash.style.display = 'none', 500); // Waits for fade to finish
+      setTimeout(() => splash.style.display = 'none', 500); 
     }
 
     if (!navigator.onLine) {
@@ -89,33 +82,9 @@
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js')
-          .then(reg => console.log('PWA Ready'))
-          .catch(err => console.error('PWA Failed', err));
+        navigator.serviceWorker.register('./sw.js');
       });
     }
-
-    let deferredPrompt;
-    const installBtn = document.getElementById('install-btn');
-
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault(); 
-      deferredPrompt = e; 
-      installBtn.style.display = 'block'; 
-    });
-
-    installBtn.addEventListener('click', async () => {
-      if (deferredPrompt) {
-        deferredPrompt.prompt(); 
-        const { outcome } = await deferredPrompt.userChoice;
-        deferredPrompt = null; 
-        installBtn.style.display = 'none'; 
-      }
-    });
-
-    window.addEventListener('appinstalled', () => {
-      installBtn.style.display = 'none';
-    });
   </script>
 </body>
 </html>
