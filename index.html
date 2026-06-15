@@ -6,15 +6,18 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="mobile-web-app-capable" content="yes">
   
-  <link rel="manifest" href="manifest.json">
+  <!-- PWA MANIFEST & THEME COLOR -->
+  <link rel="manifest" href="./manifest.json">
   <meta name="theme-color" content="#ffffff">
   
   <title>Attendance Portal</title>
   <style>
     body, html { 
-      margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; background: #f4f7f6; font-family: system-ui, sans-serif;
+      margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; 
+      background: #f4f7f6; font-family: system-ui, -apple-system, sans-serif;
     }
     
+    /* Hides the Google Apps Script Warning Banner */
     .wrapper { position: absolute; left: 0; width: 100vw; top: -55px; height: calc(100vh + 55px); }
     @media (min-width: 600px) { .wrapper { top: -45px; height: calc(100vh + 45px); } }
     @media (min-width: 1024px) { .wrapper { top: -36px; height: calc(100vh + 36px); } }
@@ -26,21 +29,46 @@
       display: none; height: 100vh; width: 100vw; flex-direction: column; 
       align-items: center; justify-content: center; text-align: center; color: #2b2d42;
     }
+
+    /* --- NEW PROFESSIONAL INSTALL BUTTON --- */
+    #install-btn {
+      display: none; /* Hidden by default until Chrome confirms PWA is ready */
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      background-color: #007bff; /* Squoosh App Blue */
+      color: #ffffff;
+      border: none;
+      padding: 8px 18px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      box-shadow: 0 2px 6px rgba(0, 123, 255, 0.3);
+      cursor: pointer;
+      z-index: 10000;
+      transition: background-color 0.2s ease, transform 0.1s ease;
+      font-family: inherit;
+    }
+
+    #install-btn:hover { background-color: #0056b3; }
+    #install-btn:active { transform: scale(0.96); }
   </style>
 </head>
 <body>
-  <!-- CUSTOM INSTALL BUTTON -->
-  <button id="install-btn" style="display: none; position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: #3a86ff; color: white; border: none; padding: 14px 28px; border-radius: 50px; font-weight: 800; font-size: 15px; box-shadow: 0 10px 25px rgba(58, 134, 255, 0.4); z-index: 10000; cursor: pointer;">
-    📲 Install Attendance App
-  </button>
-  
+
+  <!-- Fallback if they tap the app icon without internet -->
   <div id="offline-fallback">
     <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 15px;"><path d="m2 2 20 20"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><path d="M2 8.82a15 15 0 0 1 4.17-2.65"/><path d="M10.66 5c4.01-.36 8.14.9 11.34 3.82"/></svg>
     <h2 style="margin: 0 0 10px 0;">No Connection</h2>
     <p style="margin: 0; color: #8d99ae; font-size: 14px; max-width: 250px;">You must be connected to the internet to launch the attendance portal.</p>
   </div>
 
+  <!-- NATIVE INSTALL BUTTON -->
+  <button id="install-btn">Install</button>
+
   <div class="wrapper" id="app-wrapper">
+    <!-- PASTE YOUR EXACT GOOGLE SCRIPT WEB APP URL BELOW -->
     <iframe src="https://script.google.com/macros/s/AKfycbxqFEUINjN708d9WfBDbnTOpzcYRkXtbawFWtycQwV4ki-SqzDqMblXKNrTcdsUr_dt/exec" allow="geolocation"></iframe>
   </div>
 
@@ -60,37 +88,39 @@
       });
     }
 
-    // 4. MANUAL PWA INSTALL ENGINE
+    // 3. Listen for Pull-to-Refresh from Google Script
+    window.addEventListener('message', (event) => {
+      if (event.data === 'triggerRefresh') {
+        window.location.reload(); 
+      }
+    });
+
+    // 4. PROFESSIONAL PWA INSTALL ENGINE
     let deferredPrompt;
     const installBtn = document.getElementById('install-btn');
 
-    // Catch Chrome's hidden install event
+    // Chrome fires this event when it verifies your manifest and icons are perfect
     window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault(); // Stop Chrome's default behavior
-      deferredPrompt = e; // Save the event for later
-      installBtn.style.display = 'block'; // Show our custom button
+      e.preventDefault(); 
+      deferredPrompt = e; 
+      installBtn.style.display = 'block'; // Reveal the top-right button
     });
 
-    // Force the prompt when the button is tapped
     installBtn.addEventListener('click', async () => {
       if (deferredPrompt) {
-        deferredPrompt.prompt(); // Trigger Chrome's native install popup
+        deferredPrompt.prompt(); // Trigger native install UI
         const { outcome } = await deferredPrompt.userChoice;
-        deferredPrompt = null; // Clear the event once used
-        installBtn.style.display = 'none'; // Hide the button
+        if (outcome === 'accepted') {
+          console.log('App installed successfully');
+        }
+        deferredPrompt = null; 
+        installBtn.style.display = 'none'; // Hide button after interaction
       }
     });
 
-    // Hide the button permanently once the app is installed
+    // Ensures button hides permanently if installed via browser menu
     window.addEventListener('appinstalled', () => {
       installBtn.style.display = 'none';
-    });
-    
-    // 3. LISTEN FOR PULL-TO-REFRESH SIGNAL FROM IFRAME
-    window.addEventListener('message', (event) => {
-      if (event.data === 'triggerRefresh') {
-        window.location.reload(); // Reloads the clean parent domain
-      }
     });
   </script>
 </body>
