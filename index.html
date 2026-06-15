@@ -170,8 +170,8 @@
       }
     });
 
-    // 2. FAILSAFE: If Google takes longer than 6 seconds or fails, force the splash screen to hide anyway
-    setTimeout(hideSplash, 6000);
+    // 2. FAILSAFE: If Google takes longer than 2 seconds or fails, force the splash screen to hide anyway
+    setTimeout(hideSplash, 2000);
 
     // 3. Offline Check
     if (!navigator.onLine) {
