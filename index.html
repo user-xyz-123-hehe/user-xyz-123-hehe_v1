@@ -27,19 +27,17 @@
       align-items: center; justify-content: center; text-align: center; color: #2b2d42;
     }
 
-    /* PREMIUM SPLASH SCREEN */
     #splash-screen {
       position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
       background-color: #f4f7f6; z-index: 99999; display: flex; flex-direction: column;
       align-items: center; justify-content: center; transition: opacity 0.5s ease;
     }
     
+    /* Targets the new SVG logo */
     .pulse-logo {
-      width: 160px; /* Better sizing */
+      width: 180px; 
       max-width: 70%;
-      object-fit: contain;
-      mix-blend-mode: multiply; /* MAGIC TRICK: Makes the white background transparent! */
-      margin-bottom: 25px; 
+      margin-bottom: 30px; 
       animation: pulse 1.5s infinite ease-in-out;
     }
     
@@ -53,7 +51,21 @@
 <body>
 
   <div id="splash-screen">
-    <img src="./icon-512.png" alt="GDL Logo" class="pulse-logo">
+    
+    <svg class="pulse-logo" viewBox="0 0 400 200" xmlns="http://www.w3.org/2000/svg">
+      <path d="M 200,10 C 240,40 250,90 230,130 C 180,140 170,90 200,10 Z" fill="#11633a" />
+      
+      <path d="M 120,40 C 90,40 60,60 60,95 C 60,130 90,150 120,150 C 140,150 160,140 170,120 L 145,120 C 140,130 130,135 120,135 C 100,135 85,120 85,95 C 85,70 100,55 120,55 C 130,55 140,60 145,70 L 170,70 C 160,50 140,40 120,40 Z" fill="#11633a"/>
+      
+      <path d="M 240,45 L 240,145 L 260,145 C 290,145 310,125 310,95 C 310,65 290,45 260,45 Z M 260,60 C 275,60 285,75 285,95 C 285,115 275,130 260,130 L 260,60 Z" fill="#11633a"/>
+      
+      <path d="M 330,45 L 330,145 L 380,145 L 380,125 L 350,125 L 350,45 Z" fill="#11633a"/>
+      
+      <text x="200" y="175" font-family="sans-serif" font-size="16" fill="#693f87" font-weight="bold" text-anchor="middle">(a ❖ GIDC company)</text>
+      
+      <text x="200" y="210" font-family="sans-serif" font-size="28" fill="#1f2937" font-weight="800" text-anchor="middle" letter-spacing="-0.5">Attendance</text>
+    </svg>
+
     <div style="color: #8d99ae; font-weight: 600; font-size: 13px; letter-spacing: 0.5px;">Connecting Securely...</div>
   </div>
 
