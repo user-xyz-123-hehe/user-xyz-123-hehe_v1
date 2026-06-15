@@ -194,6 +194,28 @@
         navigator.serviceWorker.register('./sw.js');
       });
     }
+    // --- INSTALL BUTTON LOGIC ---
+    let deferredPrompt;
+    const installBtn = document.getElementById('install-btn');
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault(); 
+      deferredPrompt = e; 
+      installBtn.style.display = 'block'; 
+    });
+
+    installBtn.addEventListener('click', async () => {
+      if (deferredPrompt) {
+        deferredPrompt.prompt(); 
+        const { outcome } = await deferredPrompt.userChoice;
+        deferredPrompt = null; 
+        installBtn.style.display = 'none'; 
+      }
+    });
+
+    window.addEventListener('appinstalled', () => {
+      installBtn.style.display = 'none';
+    });
   </script>
 </body>
 </html>
