@@ -162,7 +162,7 @@
   </div>
 
 <script>
-    // Bulletproof Splash Screen Fader
+    // Splash Screen Fader
     let splashHidden = false;
     function hideSplash() {
       if (splashHidden) return;
@@ -172,30 +172,23 @@
       setTimeout(() => splash.style.display = 'none', 500); 
     }
 
-    // 1. Listen for the exact "Ready" signal from Google Apps Script
     window.addEventListener('message', (event) => {
-      if (event.data === 'hideSplash') {
-        hideSplash();
-      }
+      if (event.data === 'hideSplash') hideSplash();
     });
 
-    // 2. FAILSAFE: If Google takes longer than 2 seconds or fails, force the splash screen to hide anyway
     setTimeout(hideSplash, 2000);
 
-    // 3. Offline Check
     if (!navigator.onLine) {
       document.getElementById('app-wrapper').style.display = 'none';
       document.getElementById('splash-screen').style.display = 'none';
       document.getElementById('offline-fallback').style.display = 'flex';
     }
 
-    // 4. PWA Service Worker
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js');
-      });
+      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
     }
-// --- FORCED INSTALL BUTTON LOGIC ---
+
+    // --- CLEAN, PROFESSIONAL INSTALL LOGIC ---
     let deferredPrompt = null;
     const installBtn = document.getElementById('install-btn');
 
@@ -206,14 +199,17 @@
 
     installBtn.addEventListener('click', async () => {
       if (deferredPrompt) {
-        // If Chrome allows it, show the native popup
+        // If the browser is ready, show the official prompt
         deferredPrompt.prompt(); 
         const { outcome } = await deferredPrompt.userChoice;
         deferredPrompt = null; 
         installBtn.style.display = 'none'; 
       } else {
-        // If Chrome blocks it due to the cooldown, show this message
-        alert("Chrome is currently blocking the auto-install popup because you recently uninstalled this app.\n\nTo install it anyway: Tap the three dots (⋮) in the top right of your Chrome browser and tap 'Install app' or 'Add to Home screen'.");
+        // PROFESSIONAL FALLBACK: No alert box. Clean instructions instead.
+        const msg = "To install the Attendance App on your device:\n\n" +
+                    "• Android (Chrome): Tap the three dots (⋮) in the top right and select 'Install app' or 'Add to Home screen'.\n\n" +
+                    "• iPhone (Safari): Tap the Share button (⎋) at the bottom and select 'Add to Home Screen'.";
+        alert(msg);
       }
     });
 
