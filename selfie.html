@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Selfie Verification</title>
+<style>
+  :root {
+    --brand-blue: #2f5af5;
+    --bg: #f6f7fb;
+    --text-main: #14181f;
+    --text-muted: #6b7280;
+    --danger: #e23f4f;
+    --success: #0fa968;
+    --border: #e7e9f0;
+  }
+  * { box-sizing: border-box; }
+  body, html {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: var(--bg); color: var(--text-main);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+  }
+
+  .capture-card {
+    width: 100%; max-width: 360px; padding: 28px 22px;
+    text-align: center;
+  }
+
+  .capture-title { font-size: 18px; font-weight: 800; margin: 0 0 6px; letter-spacing: -0.3px; }
+  .capture-sub { font-size: 13px; color: var(--text-muted); margin: 0 0 22px; line-height: 1.5; }
+
+  .camera-frame {
+    position: relative; width: 100%; aspect-ratio: 1/1;
+    background: #0f1117; border-radius: 22px; overflow: hidden;
+    margin-bottom: 18px; border: 1.5px solid var(--border);
+  }
+  .camera-frame video, .camera-frame img {
+    width: 100%; height: 100%; object-fit: cover; display: block;
+  }
+  .cam-ring {
+    position: absolute; inset: 16px; border: 2.5px dashed rgba(255,255,255,0.35);
+    border-radius: 50%; pointer-events: none;
+  }
+
+  .error-msg {
+    color: var(--danger); font-size: 12.5px; font-weight: 600;
+    margin: 0 0 16px; line-height: 1.5; display: none;
+  }
+  .status-msg {
+    color: var(--text-muted); font-size: 12.5px; font-weight: 600;
+    margin: 0 0 16px; display: none;
+  }
+
+  .btn-row { display: flex; gap: 10px; }
+  button {
+    flex: 1; padding: 13px; border: none; border-radius: 13px;
+    font-size: 14.5px; font-weight: 700; cursor: pointer; font-family: inherit;
+    transition: transform 0.1s ease;
+  }
+  button:active { transform: scale(0.97); }
+  .btn-secondary { background: #eef0f5; color: var(--text-main); }
+  .btn-primary { background: var(--brand-blue); color: #fff; box-shadow: 0 6px 16px rgba(47,90,245,0.25); }
+  .btn-success { background: var(--success); color: #fff; box-shadow: 0 6px 16px rgba(15,169,104,0.25); }
+  button:disabled { opacity: 0.6; cursor: not-allowed; }
+
+  .powered-by {
+    margin-top: 18px; font-size: 11px; color: #b8bcc8; font-weight: 600;
+  }
+</style>
+</head>
+<body>
+
+  <div class="capture-card">
+    <h1 class="capture-title" id="capture-title">Identity Verification</h1>
+    <p class="capture-sub" id="capture-sub">Center your face in the frame and take a clear selfie.</p>
+
+    <div class="camera-frame">
+      <video id="camera-video" autoplay playsinline style="transform:scaleX(-1);"></video>
+      <img id="camera-preview" style="display:none;" />
+      <div class="cam-ring" id="cam-ring"></div>
+    </div>
+    <canvas id="camera-canvas" style="display:none;"></canvas>
+
+    <p class="error-msg" id="error-msg"></p>
+    <p class="status-msg" id="status-msg">Requesting camera access…</p>
+
+    <div class="btn-row" id="actions-live">
+      <button class="btn-secondary" onclick="closeCapture()">Cancel</button>
+      <button class="btn-primary" id="capture-btn" onclick="captureOrRetry()">📸 Capture</button>
+    </div>
+    <div class="btn-row" id="actions-preview" style="display:none;">
+      <button class="btn-secondary" onclick="retake()">Retake</button>
+      <button class="btn-success" onclick="confirmAndSend()">Use This Photo</button>
+    </div>
+
+    <div class="powered-by">Secure capture • Closes automatically when done</div>
+  </div>
+
+<script>
+  let stream = null;
+  let capturedBase64 = null;
+
+  // Read optional title/subtitle from URL params so the Apps Script side can customize the message
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('title')) document.getElementById('capture-title').innerText = params.get('title');
+  if (params.get('sub')) document.getElementById('capture-sub').innerText = params.get('sub');
+
+  function setStatus(msg) {
+    const el = document.getElementById('status-msg');
+    el.innerText = msg;
+    el.style.display = msg ? 'block' : 'none';
+  }
+  function setError(msg) {
+    const el = document.getElementById('error-msg');
+    el.innerText = msg;
+    el.style.display = msg ? 'block' : 'none';
+  }
+
+  function startCamera() {
+    setError('');
+    setStatus('Requesting camera access…');
+    document.getElementById('camera-video').style.display = 'block';
+    document.getElementById('camera-preview').style.display = 'none';
+    document.getElementById('actions-live').style.display = 'flex';
+    document.getElementById('actions-preview').style.display = 'none';
+    document.getElementById('cam-ring').style.display = 'block';
+
+    if (!window.isSecureContext) {
+      setStatus('');
+      setError('Camera requires a secure (HTTPS) connection.');
+      return;
+    }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setStatus('');
+      setError('Camera is not supported in this browser. Try Chrome or Safari.');
+      return;
+    }
+
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
+      .then(s => {
+        stream = s;
+        document.getElementById('camera-video').srcObject = s;
+        setStatus('');
+        document.getElementById('capture-btn').innerHTML = '📸 Capture';
+      })
+      .catch(err => {
+        setStatus('');
+        let msg = 'Camera access failed. ';
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          msg += 'Permission was denied. Tap the 🔒 icon next to the address bar, allow Camera access, then retry.';
+        } else if (err.name === 'NotFoundError') {
+          msg += 'No camera was found on this device.';
+        } else if (err.name === 'NotReadableError') {
+          msg += 'Camera is already in use by another app.';
+        } else {
+          msg += (err.message || err.name || 'Unknown error');
+        }
+        setError(msg);
+        document.getElementById('capture-btn').innerHTML = '🔄 Retry Camera';
+      });
+  }
+
+  function captureOrRetry() {
+    if (stream) {
+      takePhoto();
+    } else {
+      startCamera();
+    }
+  }
+
+  function takePhoto() {
+    const video = document.getElementById('camera-video');
+    const canvas = document.getElementById('camera-canvas');
+    canvas.width = video.videoWidth || 480;
+    canvas.height = video.videoHeight || 480;
+    const ctx = canvas.getContext('2d');
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    capturedBase64 = canvas.toDataURL('image/jpeg', 0.85);
+
+    document.getElementById('camera-preview').src = capturedBase64;
+    document.getElementById('camera-video').style.display = 'none';
+    document.getElementById('camera-preview').style.display = 'block';
+    document.getElementById('cam-ring').style.display = 'none';
+    document.getElementById('actions-live').style.display = 'none';
+    document.getElementById('actions-preview').style.display = 'flex';
+  }
+
+  function retake() {
+    capturedBase64 = null;
+    document.getElementById('camera-video').style.display = 'block';
+    document.getElementById('camera-preview').style.display = 'none';
+    document.getElementById('cam-ring').style.display = 'block';
+    document.getElementById('actions-live').style.display = 'flex';
+    document.getElementById('actions-preview').style.display = 'none';
+  }
+
+  function stopCamera() {
+    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  }
+
+  // Send the captured photo back to the opener (Apps Script page) via postMessage,
+  // then close this tab/window automatically.
+  function confirmAndSend() {
+    stopCamera();
+    if (window.opener) {
+      window.opener.postMessage({ type: 'SELFIE_CAPTURED', image: capturedBase64 }, '*');
+    }
+    setStatus('Verification complete — you can close this tab.');
+    document.querySelector('.btn-row').style.display = 'none';
+    document.getElementById('actions-preview').style.display = 'none';
+    setTimeout(() => { window.close(); }, 600);
+  }
+
+  function closeCapture() {
+    stopCamera();
+    if (window.opener) {
+      window.opener.postMessage({ type: 'SELFIE_CANCELLED' }, '*');
+    }
+    window.close();
+  }
+
+  // If the user closes the tab manually without confirming, release the camera
+  window.addEventListener('beforeunload', stopCamera);
+
+  startCamera();
+</script>
+</body>
+</html>
