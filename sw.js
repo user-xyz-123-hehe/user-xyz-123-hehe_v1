@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gdl-attendance-wrapper-v22';
+const CACHE_NAME = 'gdl-attendance-wrapper-v23';
 const ASSETS = [
   './',
   './index.html',
