@@ -94,6 +94,9 @@
       <button class="btn-secondary" onclick="retake()">Retake</button>
       <button class="btn-success" onclick="confirmAndSend()">Use This Photo</button>
     </div>
+    <div class="btn-row" id="actions-done" style="display:none;">
+      <button class="btn-primary" onclick="manualClose()">Continue</button>
+    </div>
 
     <div class="powered-by">Secure capture • Closes automatically when done</div>
   </div>
@@ -229,7 +232,24 @@
     setStatus('Verification complete — you can close this tab.');
     document.querySelector('.btn-row').style.display = 'none';
     document.getElementById('actions-preview').style.display = 'none';
-    setTimeout(() => { try { window.close(); } catch(e) {} }, 800);
+    setTimeout(() => {
+      try { window.close(); } catch(e) {}
+      // If we're still here after attempting to close, the browser blocked it —
+      // show a manual Continue button so the user isn't stuck on this screen.
+      setTimeout(() => {
+        document.getElementById('actions-done').style.display = 'flex';
+      }, 300);
+    }, 800);
+  }
+
+  // Fallback for when window.close() is blocked by the browser (e.g. tab wasn't
+  // opened purely by script). The result was already sent via postMessage /
+  // localStorage / BroadcastChannel above, so this just retries closing and,
+  // if that still fails, lets the user know it's safe to close manually.
+  function manualClose() {
+    try { window.close(); } catch(e) {}
+    setStatus('You can now close this tab.');
+    document.getElementById('actions-done').style.display = 'none';
   }
 
   function closeCapture() {
