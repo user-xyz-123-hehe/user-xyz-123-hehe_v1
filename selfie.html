@@ -231,15 +231,16 @@
     } catch(e) {}
 
     setStatus('Verification complete — you can close this tab.');
-    document.querySelector('.btn-row').style.display = 'none';
+    document.getElementById('actions-live').style.display = 'none';
     document.getElementById('actions-preview').style.display = 'none';
+
+    // Show the manual Continue button right away rather than waiting on a
+    // timer — timers can be throttled/suspended once window.close() is
+    // attempted, which was preventing the button from ever appearing.
+    document.getElementById('actions-done').style.display = 'flex';
+
     setTimeout(() => {
       try { window.close(); } catch(e) {}
-      // If we're still here after attempting to close, the browser blocked it —
-      // show a manual Continue button so the user isn't stuck on this screen.
-      setTimeout(() => {
-        document.getElementById('actions-done').style.display = 'flex';
-      }, 300);
     }, 800);
   }
 
