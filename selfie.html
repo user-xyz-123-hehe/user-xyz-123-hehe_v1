@@ -202,25 +202,52 @@
     if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
   }
 
-  // Send the captured photo back to the opener (Apps Script page) via postMessage,
-  // then close this tab/window automatically.
+  // Send the captured photo back to the opener via two channels:
+  // 1. postMessage (works when opened as a true popup)
+  // 2. localStorage (fallback for Android where opener is null and tab opens instead)
+  // The main app polls localStorage as a fallback when postMessage doesn't arrive.
   function confirmAndSend() {
     stopCamera();
+
+    const payload = JSON.stringify({ type: 'SELFIE_CAPTURED', image: capturedBase64, ts: Date.now() });
+
+    // Channel 1: postMessage
     if (window.opener) {
-      window.opener.postMessage({ type: 'SELFIE_CAPTURED', image: capturedBase64 }, '*');
+      try { window.opener.postMessage({ type: 'SELFIE_CAPTURED', image: capturedBase64 }, '*'); } catch(e) {}
     }
+
+    // Channel 2: localStorage (cross-tab fallback)
+    try { localStorage.setItem('gdl_selfie_result', payload); } catch(e) {}
+
+    // Channel 3: BroadcastChannel (supported on modern Android Chrome)
+    try {
+      const bc = new BroadcastChannel('gdl_selfie');
+      bc.postMessage({ type: 'SELFIE_CAPTURED', image: capturedBase64 });
+      bc.close();
+    } catch(e) {}
+
     setStatus('Verification complete — you can close this tab.');
     document.querySelector('.btn-row').style.display = 'none';
     document.getElementById('actions-preview').style.display = 'none';
-    setTimeout(() => { window.close(); }, 600);
+    setTimeout(() => { try { window.close(); } catch(e) {} }, 800);
   }
 
   function closeCapture() {
     stopCamera();
+
+    const payload = JSON.stringify({ type: 'SELFIE_CANCELLED', ts: Date.now() });
+
     if (window.opener) {
-      window.opener.postMessage({ type: 'SELFIE_CANCELLED' }, '*');
+      try { window.opener.postMessage({ type: 'SELFIE_CANCELLED' }, '*'); } catch(e) {}
     }
-    window.close();
+    try { localStorage.setItem('gdl_selfie_result', payload); } catch(e) {}
+    try {
+      const bc = new BroadcastChannel('gdl_selfie');
+      bc.postMessage({ type: 'SELFIE_CANCELLED' });
+      bc.close();
+    } catch(e) {}
+
+    try { window.close(); } catch(e) {}
   }
 
   // If the user closes the tab manually without confirming, release the camera
