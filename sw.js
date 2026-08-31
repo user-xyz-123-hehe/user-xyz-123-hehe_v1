@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gdl-attendance-wrapper-v27';
+const CACHE_NAME = 'gdl-attendance-v10-20260831';
 const ASSETS = [
   './',
   './index.html',
@@ -27,8 +27,26 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-  // Network-first for the iframe target (Apps Script) is handled by the iframe itself, not this SW —
-  // this SW only caches the wrapper shell assets (index.html, manifest, icons).
+  const url = new URL(event.request.url);
+
+  if (url.hostname === 'script.google.com' || url.hostname === 'script.googleusercontent.com') {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
+  if (event.request.mode === 'navigate' || url.pathname.endsWith('/index.html')) {
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then(response => {
       return response || fetch(event.request);
