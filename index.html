@@ -104,9 +104,10 @@
       background: rgba(10,99,58,0.10); overflow: hidden;
     }
     .splash-progress::before {
-      content: ""; display: block; height: 100%; width: 40%;
+      content: ""; display: block; height: 100%; width: 100%;
       background: linear-gradient(90deg, var(--saffron), var(--saffron-dark));
-      border-radius: 3px; animation: slide 1.4s ease-in-out infinite;
+      border-radius: 3px; transform: scaleX(0); transform-origin: left center;
+      animation: splashFill 5s linear forwards;
     }
 
     @keyframes logoBreathe {
@@ -120,9 +121,8 @@
       100% { transform: scale(1.25); opacity: 0; }
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-    @keyframes slide {
-      0% { transform: translateX(-120%); }
-      100% { transform: translateX(360%); }
+    @keyframes splashFill {
+      100% { transform: scaleX(1); }
     }
     @media (prefers-reduced-motion: reduce) {
       .splash-ring, .splash-logo, .splash-progress::before { animation: none !important; }
@@ -178,6 +178,7 @@
 <script>
     // ───── Splash Screen Fader ─────
     let splashHidden = false;
+    const SPLASH_MAX_WAIT_MS = 5000;
     function hideSplash() {
       if (splashHidden) return;
       splashHidden = true;
@@ -244,8 +245,8 @@
       else if (event.data.type === 'GDL_NOTIFY') showWrapperNotification(event.data);
     });
 
-    setTimeout(() => { if (!splashHidden) setSplashStatus('Loading attendance data...'); }, 6000);
-    setTimeout(() => { if (!splashHidden) setSplashStatus('Still connecting to the attendance server...'); }, 14000);
+    setTimeout(() => { if (!splashHidden) setSplashStatus('Opening attendance...'); }, 2500);
+    setTimeout(() => { hideSplash(); }, SPLASH_MAX_WAIT_MS);
 
     if (!navigator.onLine) {
       document.getElementById('app-wrapper').style.display = 'none';
