@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gdl-attendance-v10';
+const CACHE_NAME = 'gdl-attendance-v13-20260831';
 const ASSETS = [
   './',
   './index.html',
