@@ -140,9 +140,26 @@
     }
     #install-btn:hover { background-color: var(--primary-dark); }
     #install-btn:active { transform: scale(0.96); }
-  </style>
+
+    #wrapper-version-badge {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      z-index: 100001;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #e9a521;
+      color: #06371f;
+      border: 1px solid rgba(6,55,31,0.24);
+      box-shadow: 0 4px 14px rgba(6,55,31,0.18);
+      font-size: 12px;
+      font-weight: 900;
+      line-height: 1;
+    }
+</style>
 </head>
 <body>
+  <div id="wrapper-version-badge">V10</div>
 
   <div id="splash-screen">
     <div class="splash-logo-wrap">
@@ -172,10 +189,13 @@
   <button id="install-btn">⬇ Install App</button>
 
   <div class="wrapper" id="app-wrapper">
-    <iframe src="https://script.google.com/macros/s/AKfycbxuTCJUJUTHnSiogMYOojF4wMAU5Pk1rZsXhHe6iaNbVYMHy9YysV3Wg4zPMJ4Ph04/exec" allow="geolocation; camera; microphone" allowfullscreen title="GDL Attendance"></iframe>
+    <iframe id="attendance-frame" src="https://script.google.com/macros/s/AKfycbxuTCJUJUTHnSiogMYOojF4wMAU5Pk1rZsXhHe6iaNbVYMHy9YysV3Wg4zPMJ4Ph04/exec?v=10" allow="geolocation; camera; microphone" allowfullscreen title="GDL Attendance"></iframe>
   </div>
 
 <script>
+    const WRAPPER_VERSION = 'V10';
+    window.WRAPPER_VERSION = WRAPPER_VERSION;
+
     // ───── Splash Screen Fader ─────
     let splashHidden = false;
     function hideSplash() {
@@ -217,7 +237,9 @@
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js').catch(err => console.warn('SW registration failed:', err));
+        navigator.serviceWorker.register('./sw.js?v=10')
+          .then(reg => reg.update())
+          .catch(err => console.warn('SW registration failed:', err));
       });
     }
 
