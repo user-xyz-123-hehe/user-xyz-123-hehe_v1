@@ -3,7 +3,7 @@
   "short_name": "Attendance",
   "description": "Official attendance and time tracking app for GDL employees.",
   "id": "/",
-  "start_url": "./index.html?v=13",
+  "start_url": "./index.html?v=15",
   "scope": "./",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
