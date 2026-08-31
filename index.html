@@ -141,26 +141,9 @@
     #install-btn:hover { background-color: var(--primary-dark); }
     #install-btn:active { transform: scale(0.96); }
 
-    #wrapper-version-badge {
-      position: fixed;
-      top: 10px;
-      left: 10px;
-      z-index: 100001;
-      padding: 6px 10px;
-      border-radius: 999px;
-      background: #e9a521;
-      color: #06371f;
-      border: 1px solid rgba(6,55,31,0.24);
-      box-shadow: 0 4px 14px rgba(6,55,31,0.18);
-      font-size: 12px;
-      font-weight: 900;
-      line-height: 1;
-    }
 </style>
 </head>
 <body>
-  <div id="wrapper-version-badge">V10</div>
-
   <div id="splash-screen">
     <div class="splash-logo-wrap">
       <span class="splash-ring r1"></span>
@@ -189,13 +172,10 @@
   <button id="install-btn">⬇ Install App</button>
 
   <div class="wrapper" id="app-wrapper">
-    <iframe id="attendance-frame" src="https://script.google.com/macros/s/AKfycbzDYQ67C-7jfa9_34RzeVUtgpm7sGAV3VPjTYHLAuW0b2xnWi0HWYlCHUcBagfs-64W/exec" allow="geolocation; camera; microphone" allowfullscreen title="GDL Attendance"></iframe>
+    <iframe id="attendance-frame" src="https://script.google.com/macros/s/AKfycbxuTCJUJUTHnSiogMYOojF4wMAU5Pk1rZsXhHe6iaNbVYMHy9YysV3Wg4zPMJ4Ph04/exec?v=13" allow="geolocation; camera; microphone" allowfullscreen title="GDL Attendance"></iframe>
   </div>
 
 <script>
-    const WRAPPER_VERSION = 'V10';
-    window.WRAPPER_VERSION = WRAPPER_VERSION;
-
     // ───── Splash Screen Fader ─────
     let splashHidden = false;
     function hideSplash() {
@@ -207,7 +187,7 @@
     }
 
     // Update splash status text while waiting (purely cosmetic, reassures the user something is happening)
-    const statusMessages = ['Connecting securely…', 'Loading your dashboard…', 'Almost there…'];
+    const statusMessages = ['Connecting securely…', 'Loading attendance data…', 'Waiting for the attendance server…'];
     let statusIdx = 0;
     const statusInterval = setInterval(() => {
       if (splashHidden) { clearInterval(statusInterval); return; }
@@ -216,12 +196,56 @@
       if (el) el.textContent = statusMessages[statusIdx];
     }, 2200);
 
+    function setSplashStatus(text) {
+      const el = document.getElementById('splash-status-text');
+      if (el) el.textContent = text;
+    }
+
+    function postNotifyPermissionStatus() {
+      const frame = document.getElementById('attendance-frame');
+      const permission = ('Notification' in window) ? Notification.permission : 'unsupported';
+      if (frame && frame.contentWindow) {
+        frame.contentWindow.postMessage({ type: 'GDL_NOTIFY_PERMISSION', permission }, '*');
+      }
+    }
+
+    async function requestWrapperNotificationPermission() {
+      if (!('Notification' in window) || !window.isSecureContext) {
+        postNotifyPermissionStatus();
+        return;
+      }
+      if (Notification.permission === 'default') {
+        await Notification.requestPermission();
+      }
+      postNotifyPermissionStatus();
+    }
+
+    function showWrapperNotification(payload) {
+      if (!payload || !('Notification' in window) || Notification.permission !== 'granted') return;
+      new Notification(payload.title || 'GDL Attendance', {
+        body: payload.body || '',
+        tag: payload.tag || 'gdl-attendance',
+        icon: './icons/icon-192.png',
+        badge: './icons/favicon-32.png'
+      });
+    }
+
     window.addEventListener('message', (event) => {
-      if (event.data === 'hideSplash') hideSplash();
+      const frame = document.getElementById('attendance-frame');
+      if (frame && event.source !== frame.contentWindow) return;
+      if (event.data === 'hideSplash') {
+        hideSplash();
+        return;
+      }
+      if (!event.data || typeof event.data !== 'object') return;
+      if (event.data.type === 'GDL_APP_READY') hideSplash();
+      else if (event.data.type === 'GDL_REQUEST_NOTIFY_PERMISSION') requestWrapperNotificationPermission();
+      else if (event.data.type === 'GDL_GET_NOTIFY_PERMISSION') postNotifyPermissionStatus();
+      else if (event.data.type === 'GDL_NOTIFY') showWrapperNotification(event.data);
     });
 
-    // Safety net: never let the splash hang forever even if the iframe fails to post back
-    setTimeout(hideSplash, 6000);
+    setTimeout(() => { if (!splashHidden) setSplashStatus('Loading attendance data...'); }, 6000);
+    setTimeout(() => { if (!splashHidden) setSplashStatus('Still connecting to the attendance server...'); }, 14000);
 
     if (!navigator.onLine) {
       document.getElementById('app-wrapper').style.display = 'none';
@@ -237,7 +261,7 @@
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js?v=10')
+        navigator.serviceWorker.register('./sw.js?v=13')
           .then(reg => reg.update())
           .catch(err => console.warn('SW registration failed:', err));
       });
@@ -263,16 +287,27 @@
     });
 
     installBtn.addEventListener('click', async () => {
-      if (deferredPrompt) {
+      const ua = navigator.userAgent || '';
+      const isIOS = /iphone|ipad|ipod/i.test(ua);
+      const isAndroid = /android/i.test(ua);
+      const isChrome = /chrome|crios/i.test(ua) && !/edg|opr|opera|firefox/i.test(ua);
+
+      if (deferredPrompt && isAndroid) {
         deferredPrompt.prompt();
         const { outcome } = await deferredPrompt.userChoice;
         deferredPrompt = null;
         installBtn.style.display = 'none';
       } else {
-        const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
-        const msg = isIOS
-          ? "To install this app on your iPhone:\n\n1. Tap the Share button (□↑) at the bottom of Safari\n2. Scroll down and tap 'Add to Home Screen'\n3. Tap 'Add' in the top right"
-          : "To install this app:\n\n1. Tap the three-dot menu (⋮) in the top right of Chrome\n2. Select 'Install app' or 'Add to Home screen'\n3. Confirm to add it to your device";
+        let msg;
+        if (isIOS) {
+          msg = "iPhone / iPad Safari install:\n\n1. Open this page in Safari.\n2. Tap the Share button.\n3. Choose Add to Home Screen.\n4. Tap Add.";
+        } else if (isAndroid && isChrome) {
+          msg = "Android Chrome install:\n\n1. Tap the three-dot menu in Chrome.\n2. Choose Install app or Add to Home screen.\n3. Tap Install/Add to confirm.";
+        } else if (isAndroid) {
+          msg = "Android install:\n\nFor the best result, open this page in Chrome, then use the three-dot menu and choose Install app or Add to Home screen.";
+        } else {
+          msg = "Install this app from your browser menu using Install app or Add to Home screen.";
+        }
         alert(msg);
       }
     });
