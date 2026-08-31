@@ -1,5 +1,4 @@
-const CACHE_NAME = 'gdl-attendance-v13-20260831';
-const CACHE_NAME = 'gdl-attendance-v13-20260831-5s';
+const CACHE_NAME = 'gdl-attendance-v15-20260831-5s';
 const ASSETS = [
   './',
   './index.html',
