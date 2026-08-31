@@ -172,7 +172,7 @@
   <button id="install-btn">⬇ Install App</button>
 
   <div class="wrapper" id="app-wrapper">
-    <iframe id="attendance-frame" src="https://script.google.com/macros/s/AKfycbxuTCJUJUTHnSiogMYOojF4wMAU5Pk1rZsXhHe6iaNbVYMHy9YysV3Wg4zPMJ4Ph04/exec?v=13" allow="geolocation; camera; microphone" allowfullscreen title="GDL Attendance"></iframe>
+    <iframe id="attendance-frame" src="https://script.google.com/macros/s/AKfycbxuTCJUJUTHnSiogMYOojF4wMAU5Pk1rZsXhHe6iaNbVYMHy9YysV3Wg4zPMJ4Ph04/exec?v=15" allow="geolocation; camera; microphone" allowfullscreen title="GDL Attendance"></iframe>
   </div>
 
 <script>
@@ -262,7 +262,7 @@
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js?v=13')
+        navigator.serviceWorker.register('./sw.js?v=15')
           .then(reg => reg.update())
           .catch(err => console.warn('SW registration failed:', err));
       });
