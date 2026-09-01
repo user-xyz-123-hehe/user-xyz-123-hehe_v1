@@ -1,7 +1,8 @@
-const CACHE_NAME = 'gdl-attendance-v15-20260831-notify-default';
+const CACHE_NAME = 'gdl-attendance-v15-1-20260901-safari-gps';
 const ASSETS = [
   './',
   './index.html',
+  './selfie.html',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -34,7 +35,7 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  if (event.request.mode === 'navigate' || url.pathname.endsWith('/index.html')) {
+  if (event.request.mode === 'navigate' || url.pathname.endsWith('/index.html') || url.pathname.endsWith('/selfie.html')) {
     event.respondWith(
       fetch(event.request)
         .then(response => {
