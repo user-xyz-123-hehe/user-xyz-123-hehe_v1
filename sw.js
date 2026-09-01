@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gdl-attendance-v15-1-20260901-safari-gps-version';
+const CACHE_NAME = 'gdl-attendance-v15-1-20260901-no-recovery';
 const ASSETS = [
   './',
   './index.html',
