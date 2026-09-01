@@ -247,6 +247,10 @@
     const SPLASH_MAX_WAIT_MS = 5000;
     const ATTENDANCE_APP_URL = 'https://script.google.com/macros/s/AKfycbzDYQ67C-7jfa9_34RzeVUtgpm7sGAV3VPjTYHLAuW0b2xnWi0HWYlCHUcBagfs-64W/exec';
     const STORAGE_PREFIX = 'gdlAttendance:';
+    const SESSION_BUNDLE_KEY = 'sessionBundle';
+    const SESSION_KEYS = ['savedEmpId', 'savedEmpName', 'savedEmpLocation', 'savedEmpType', 'deviceToken'];
+    const WRAPPER_DB_NAME = 'GDLAttendanceWrapperDB';
+    const WRAPPER_DB_STORE = 'kv';
     function hideSplash() {
       if (splashHidden) return;
       splashHidden = true;
@@ -362,6 +366,169 @@
     }
 
     function handleStorageRequest(data) {
+    function openWrapperDB() {
+      return new Promise(resolve => {
+        if (!('indexedDB' in window)) { resolve(null); return; }
+        try {
+          const req = indexedDB.open(WRAPPER_DB_NAME, 1);
+          req.onupgradeneeded = () => {
+            const db = req.result;
+            if (!db.objectStoreNames.contains(WRAPPER_DB_STORE)) db.createObjectStore(WRAPPER_DB_STORE);
+          };
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => resolve(null);
+        } catch (e) {
+          resolve(null);
+        }
+      });
+    }
+
+    async function wrapperIdbGet(key) {
+      const db = await openWrapperDB();
+      if (!db) return null;
+      return new Promise(resolve => {
+        try {
+          const tx = db.transaction(WRAPPER_DB_STORE, 'readonly');
+          const req = tx.objectStore(WRAPPER_DB_STORE).get(key);
+          req.onsuccess = () => resolve(req.result || null);
+          req.onerror = () => resolve(null);
+        } catch (e) {
+          resolve(null);
+        }
+      });
+    }
+
+    async function wrapperIdbSet(key, value) {
+      const db = await openWrapperDB();
+      if (!db) return false;
+      return new Promise(resolve => {
+        try {
+          const tx = db.transaction(WRAPPER_DB_STORE, 'readwrite');
+          tx.objectStore(WRAPPER_DB_STORE).put(value, key);
+          tx.oncomplete = () => resolve(true);
+          tx.onerror = () => resolve(false);
+        } catch (e) {
+          resolve(false);
+        }
+      });
+    }
+
+    async function wrapperIdbRemove(key) {
+      const db = await openWrapperDB();
+      if (!db) return false;
+      return new Promise(resolve => {
+        try {
+          const tx = db.transaction(WRAPPER_DB_STORE, 'readwrite');
+          tx.objectStore(WRAPPER_DB_STORE).delete(key);
+          tx.oncomplete = () => resolve(true);
+          tx.onerror = () => resolve(false);
+        } catch (e) {
+          resolve(false);
+        }
+      });
+    }
+
+    function normalizeWrapperSession(raw) {
+      if (!raw) return null;
+      let src = raw;
+      if (typeof src === 'string') {
+        try { src = JSON.parse(src); } catch (e) { return null; }
+      }
+      if (src.session && typeof src.session === 'object') src = src.session;
+      const empId = (src.empId || src.savedEmpId || '').toString().trim();
+      const deviceToken = (src.deviceToken || '').toString().trim();
+      if (!deviceToken) return null;
+      return {
+        empId,
+        empName: (src.empName || src.savedEmpName || '').toString(),
+        empLocation: (src.empLocation || src.savedEmpLocation || '').toString(),
+        empType: (src.empType || src.savedEmpType || 'Regular').toString(),
+        deviceToken,
+        savedAt: Number(src.savedAt) || Date.now(),
+        build: src.build || 'V15.1'
+      };
+    }
+
+    function legacySessionBundle(overrides) {
+      const src = overrides || {};
+      return normalizeWrapperSession({
+        empId: src.empId || src.savedEmpId || getWrapperStorage('savedEmpId') || '',
+        empName: src.empName || src.savedEmpName || getWrapperStorage('savedEmpName') || '',
+        empLocation: src.empLocation || src.savedEmpLocation || getWrapperStorage('savedEmpLocation') || '',
+        empType: src.empType || src.savedEmpType || getWrapperStorage('savedEmpType') || 'Regular',
+        deviceToken: src.deviceToken || getWrapperStorage('deviceToken') || '',
+        savedAt: src.savedAt || Date.now(),
+        build: src.build || 'V15.1'
+      });
+    }
+
+    function writeWrapperSessionLocal(bundle) {
+      const normalized = normalizeWrapperSession(bundle);
+      if (!normalized) return false;
+      const json = JSON.stringify(normalized);
+      let ok = setWrapperStorage(SESSION_BUNDLE_KEY, json);
+      if (normalized.empId) ok = setWrapperStorage('savedEmpId', normalized.empId) && ok;
+      if (normalized.empName) ok = setWrapperStorage('savedEmpName', normalized.empName) && ok;
+      if (normalized.empLocation) ok = setWrapperStorage('savedEmpLocation', normalized.empLocation) && ok;
+      if (normalized.empType) ok = setWrapperStorage('savedEmpType', normalized.empType) && ok;
+      if (normalized.deviceToken) ok = setWrapperStorage('deviceToken', normalized.deviceToken) && ok;
+      return ok;
+    }
+
+    async function loadWrapperSessionBundle(repair) {
+      const candidates = [];
+      const localBundle = normalizeWrapperSession(getWrapperStorage(SESSION_BUNDLE_KEY));
+      if (localBundle) candidates.push(localBundle);
+      const idbBundle = normalizeWrapperSession(await wrapperIdbGet(SESSION_BUNDLE_KEY));
+      if (idbBundle) candidates.push(idbBundle);
+      const legacyBundle = legacySessionBundle();
+      if (legacyBundle) candidates.push(legacyBundle);
+      if (!candidates.length) return null;
+      candidates.sort((a, b) => (Number(b.savedAt) || 0) - (Number(a.savedAt) || 0));
+      const best = candidates[0];
+      if (repair !== false) {
+        writeWrapperSessionLocal(best);
+        wrapperIdbSet(SESSION_BUNDLE_KEY, JSON.stringify(best));
+      }
+      return best;
+    }
+
+    async function saveWrapperSessionBundle(session) {
+      const existing = await loadWrapperSessionBundle(false);
+      const merged = normalizeWrapperSession(Object.assign({}, existing || {}, session || {}, { savedAt: Date.now(), build: 'V15.1' }));
+      if (!merged) return false;
+      const localOk = writeWrapperSessionLocal(merged);
+      const idbOk = await wrapperIdbSet(SESSION_BUNDLE_KEY, JSON.stringify(merged));
+      return localOk || idbOk;
+    }
+
+    async function clearWrapperSessionBundle() {
+      removeWrapperStorage(SESSION_BUNDLE_KEY);
+      SESSION_KEYS.forEach(key => removeWrapperStorage(key));
+      await wrapperIdbRemove(SESSION_BUNDLE_KEY);
+      return true;
+    }
+
+    async function handleSessionRequest(data) {
+      let ok = true;
+      let session = null;
+      try {
+        if (data.type === 'GDL_SESSION_GET' || data.type === 'GDL_STORAGE_SYNC_REQUEST') {
+          session = await loadWrapperSessionBundle();
+          ok = !!session;
+        } else if (data.type === 'GDL_SESSION_SAVE' || data.type === 'GDL_STORAGE_SYNC_DATA') {
+          ok = await saveWrapperSessionBundle(data.session || data.values || {});
+          session = await loadWrapperSessionBundle(false);
+        } else if (data.type === 'GDL_SESSION_CLEAR' || data.type === 'GDL_STORAGE_CLEAR') {
+          ok = await clearWrapperSessionBundle();
+        }
+      } catch (e) {
+        ok = false;
+      }
+      postToFrame({ type: 'GDL_SESSION_RESULT', requestId: data.requestId, ok, session, geoSupported: canUseWrapperGeolocation() });
+    }
+
+    async function handleStorageRequest(data) {
       let ok = true;
       let value = null;
       let values = {};
@@ -372,8 +539,10 @@
           (data.keys || []).forEach(key => { values[key] = getWrapperStorage(key); });
         } else if (data.type === 'GDL_STORAGE_SET') {
           ok = setWrapperStorage(data.key, data.value);
+          if (SESSION_KEYS.includes(data.key)) saveWrapperSessionBundle({ [data.key]: data.value });
         } else if (data.type === 'GDL_STORAGE_SET_MANY') {
           Object.keys(data.values || {}).forEach(key => { if (!setWrapperStorage(key, data.values[key])) ok = false; });
+          if (Object.keys(data.values || {}).some(key => SESSION_KEYS.includes(key))) saveWrapperSessionBundle(data.values || {});
         } else if (data.type === 'GDL_STORAGE_REMOVE') {
           ok = removeWrapperStorage(data.key);
         } else if (data.type === 'GDL_STORAGE_REMOVE_MANY') {
@@ -381,6 +550,24 @@
         }
       } catch (e) {
         ok = false;
+      }
+      if ((data.type === 'GDL_STORAGE_GET' && SESSION_KEYS.includes(data.key) && !value) ||
+          (data.type === 'GDL_STORAGE_GET_MANY' && (data.keys || []).some(key => SESSION_KEYS.includes(key)))) {
+        const bundle = await loadWrapperSessionBundle();
+        if (bundle) {
+          if (data.type === 'GDL_STORAGE_GET' && data.key === 'deviceToken') value = bundle.deviceToken || value;
+          else if (data.type === 'GDL_STORAGE_GET' && data.key === 'savedEmpId') value = bundle.empId || value;
+          else if (data.type === 'GDL_STORAGE_GET' && data.key === 'savedEmpName') value = bundle.empName || value;
+          else if (data.type === 'GDL_STORAGE_GET' && data.key === 'savedEmpLocation') value = bundle.empLocation || value;
+          else if (data.type === 'GDL_STORAGE_GET' && data.key === 'savedEmpType') value = bundle.empType || value;
+          if (data.type === 'GDL_STORAGE_GET_MANY') {
+            if ('savedEmpId' in values && !values.savedEmpId) values.savedEmpId = bundle.empId || '';
+            if ('savedEmpName' in values && !values.savedEmpName) values.savedEmpName = bundle.empName || '';
+            if ('savedEmpLocation' in values && !values.savedEmpLocation) values.savedEmpLocation = bundle.empLocation || '';
+            if ('savedEmpType' in values && !values.savedEmpType) values.savedEmpType = bundle.empType || '';
+            if ('deviceToken' in values && !values.deviceToken) values.deviceToken = bundle.deviceToken || '';
+          }
+        }
       }
       postToFrame({ type: 'GDL_STORAGE_RESULT', requestId: data.requestId, ok, value, values });
       postToFrame({ type: 'GDL_STORAGE_RESULT', requestId: data.requestId, ok, value, values, geoSupported: canUseWrapperGeolocation() });
@@ -684,6 +871,8 @@
       else if (event.data.type === 'GDL_REQUEST_NOTIFY_PERMISSION') requestWrapperNotificationPermission();
       else if (event.data.type === 'GDL_GET_NOTIFY_PERMISSION') postNotifyPermissionStatus();
       else if (event.data.type === 'GDL_NOTIFY') showWrapperNotification(event.data);
+      else if (event.data.type === 'GDL_SESSION_GET' || event.data.type === 'GDL_SESSION_SAVE' || event.data.type === 'GDL_SESSION_CLEAR' ||
+               event.data.type === 'GDL_STORAGE_SYNC_REQUEST' || event.data.type === 'GDL_STORAGE_SYNC_DATA' || event.data.type === 'GDL_STORAGE_CLEAR') handleSessionRequest(event.data);
       else if (event.data.type && event.data.type.indexOf('GDL_STORAGE_') === 0) handleStorageRequest(event.data);
       else if (event.data.type === 'GDL_GEO_SAMPLE') handleGeoSampleRequest(event.data);
       else if (event.data.type === 'GDL_OPEN_SELFIE') openSelfieFromWrapper(event.data);
