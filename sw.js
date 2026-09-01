@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gdl-attendance-v15-1-20260901-no-recovery-1';
+const CACHE_NAME = 'gdl-attendance-v15-1-20260901-ios-selfie-tap';
 const ASSETS = [
   './',
   './index.html',
