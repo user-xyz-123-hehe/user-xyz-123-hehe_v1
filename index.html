@@ -244,9 +244,9 @@
     let activeSelfieRequestId = '';
     let activeSelfieCloseTimer = null;
     let pendingSelfieLaunch = null;
-    const SPLASH_MAX_WAIT_MS = 5000;
     const SPLASH_TOTAL_VISIBLE_MS = 5000;
     const SPLASH_FADE_MS = 450;
+    const SPLASH_MAX_WAIT_MS = Math.max(0, SPLASH_TOTAL_VISIBLE_MS - SPLASH_FADE_MS);
     const ATTENDANCE_APP_URL = 'https://script.google.com/macros/s/AKfycbzDYQ67C-7jfa9_34RzeVUtgpm7sGAV3VPjTYHLAuW0b2xnWi0HWYlCHUcBagfs-64W/exec';
     const STORAGE_PREFIX = 'gdlAttendance:';
     const SESSION_BUNDLE_KEY = 'sessionBundle';
@@ -258,7 +258,6 @@
       splashHidden = true;
       const splash = document.getElementById('splash-screen');
       splash.style.opacity = '0';
-      setTimeout(() => splash.style.display = 'none', 450);
       setTimeout(() => splash.style.display = 'none', SPLASH_FADE_MS);
     }
 
@@ -302,12 +301,8 @@
     }
 
     function showLaunchRecovery(reason) {
-      if (appReady) return;
       lastWrapperError = reason || lastWrapperError;
       updateRecoveryNote();
-      hideSplash();
-      const recovery = document.getElementById('launch-recovery');
-      if (recovery) recovery.style.display = 'flex';
       hideLaunchRecovery();
     }
 
@@ -328,7 +323,6 @@
       setSplashStatus('Reconnecting...');
       const frame = frameEl();
       if (frame) frame.src = ATTENDANCE_APP_URL;
-      setTimeout(() => { if (!appReady) showLaunchRecovery('Retry did not finish loading'); }, 9000);
     }
 
     async function refreshAppCache() {
@@ -368,7 +362,6 @@
       try { localStorage.removeItem(wrapperStorageKey(key)); return true; } catch (e) { return false; }
     }
 
-    function handleStorageRequest(data) {
     function openWrapperDB() {
       return new Promise(resolve => {
         if (!('indexedDB' in window)) { resolve(null); return; }
@@ -572,7 +565,6 @@
           }
         }
       }
-      postToFrame({ type: 'GDL_STORAGE_RESULT', requestId: data.requestId, ok, value, values });
       postToFrame({ type: 'GDL_STORAGE_RESULT', requestId: data.requestId, ok, value, values, geoSupported: canUseWrapperGeolocation() });
     }
 
@@ -741,10 +733,6 @@
       activeSelfieRequestId = requestId;
       if (activeSelfieCloseTimer) clearInterval(activeSelfieCloseTimer);
       if (!activeSelfiePopup) {
-        pendingSelfieLaunch = { requestId, url };
-        postToFrame({ type: 'GDL_SELFIE_OPENED', requestId, needsTap: true });
-        const launcher = document.getElementById('selfie-launcher');
-        if (launcher) launcher.style.display = 'flex';
         showSelfieLauncher(requestId, url);
         return;
       }
@@ -862,14 +850,12 @@
       if (event.data === 'hideSplash') {
         appReady = true;
         hideLaunchRecovery();
-        hideSplash();
         return;
       }
       if (!event.data || typeof event.data !== 'object') return;
       if (event.data.type === 'GDL_APP_READY') {
         appReady = true;
         hideLaunchRecovery();
-        hideSplash();
       }
       else if (event.data.type === 'GDL_REQUEST_NOTIFY_PERMISSION') requestWrapperNotificationPermission();
       else if (event.data.type === 'GDL_GET_NOTIFY_PERMISSION') postNotifyPermissionStatus();
@@ -887,7 +873,6 @@
 
     setTimeout(() => { if (!splashHidden) setSplashStatus('Opening attendance...'); }, 2500);
     setTimeout(() => { hideSplash(); }, SPLASH_MAX_WAIT_MS);
-    setTimeout(() => { if (!appReady && navigator.onLine) showLaunchRecovery('Attendance frame not ready'); }, 8500);
 
     if (!navigator.onLine) {
       document.getElementById('app-wrapper').style.display = 'none';
