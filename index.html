@@ -54,6 +54,44 @@
       box-shadow: 0 6px 16px rgba(10,99,58,0.25);
     }
 
+    #launch-recovery {
+      display: none; position: fixed; inset: 0; z-index: 99997; background: var(--bg);
+      align-items: center; justify-content: center; padding: 24px; box-sizing: border-box;
+    }
+    .recovery-card {
+      width: 100%; max-width: 360px; background: #fff; border: 1px solid #dbe5df;
+      border-radius: 22px; padding: 24px 20px; box-shadow: 0 18px 44px -26px rgba(6,55,31,0.45);
+      text-align: center;
+    }
+    .recovery-card h2 { margin: 0 0 8px; font-size: 18px; color: var(--primary-deep); }
+    .recovery-card p { margin: 0 0 18px; color: var(--text-muted); font-size: 13px; line-height: 1.5; }
+    .recovery-actions { display: grid; grid-template-columns: 1fr; gap: 10px; }
+    .recovery-actions button {
+      padding: 12px 14px; border: none; border-radius: 12px; font-size: 14px; font-weight: 750;
+      font-family: inherit; cursor: pointer;
+    }
+    .recovery-primary { background: var(--primary); color: #fff; }
+    .recovery-soft { background: #eef2ef; color: var(--text-main); }
+    .recovery-note { margin-top: 14px; font-size: 11px; color: #7a8a82; word-break: break-word; }
+
+    #selfie-launcher {
+      display: none; position: fixed; inset: 0; z-index: 100001; background: rgba(245,248,246,0.92);
+      align-items: center; justify-content: center; padding: 24px; box-sizing: border-box;
+    }
+    .selfie-launch-card {
+      width: 100%; max-width: 330px; background: #fff; border: 1px solid #dbe5df;
+      border-radius: 22px; padding: 24px 20px; text-align: center;
+      box-shadow: 0 18px 44px -26px rgba(6,55,31,0.45);
+    }
+    .selfie-launch-card h2 { margin: 0 0 8px; color: var(--primary-deep); font-size: 18px; }
+    .selfie-launch-card p { margin: 0 0 18px; color: var(--text-muted); font-size: 13px; line-height: 1.5; }
+    .selfie-launch-card button {
+      width: 100%; padding: 13px 14px; border: none; border-radius: 13px;
+      font-size: 14px; font-weight: 800; font-family: inherit; cursor: pointer;
+    }
+    .selfie-launch-card .open-camera { background: var(--primary); color: #fff; margin-bottom: 10px; }
+    .selfie-launch-card .cancel-camera { background: #eef2ef; color: var(--text-main); }
+
     /* ───── Splash / loading screen ───── */
     #splash-screen {
       position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
@@ -169,16 +207,46 @@
     <button onclick="window.location.reload()">Try Again</button>
   </div>
 
+  <div id="launch-recovery">
+    <div class="recovery-card">
+      <h2>Attendance Is Taking Longer</h2>
+      <p>The app did not finish loading. This usually means Safari kept an old file or the attendance server stalled.</p>
+      <div class="recovery-actions">
+        <button class="recovery-primary" onclick="retryAttendance()">Retry</button>
+        <button class="recovery-soft" onclick="refreshAppCache()">Refresh App Cache</button>
+        <button class="recovery-soft" onclick="openAttendanceDirect()">Open Direct</button>
+      </div>
+      <div class="recovery-note" id="recovery-note">V15.1</div>
+    </div>
+  </div>
+
+  <div id="selfie-launcher">
+    <div class="selfie-launch-card">
+      <h2>Open Camera</h2>
+      <p>Safari needs one more tap to open the secure selfie camera.</p>
+      <button class="open-camera" onclick="launchPendingSelfie()">Open Camera</button>
+      <button class="cancel-camera" onclick="cancelPendingSelfie()">Cancel</button>
+    </div>
+  </div>
+
   <button id="install-btn">⬇ Install App</button>
 
   <div class="wrapper" id="app-wrapper">
-    <iframe id="attendance-frame" src="https://script.google.com/macros/s/AKfycbzDYQ67C-7jfa9_34RzeVUtgpm7sGAV3VPjTYHLAuW0b2xnWi0HWYlCHUcBagfs-64W/exec" allow="geolocation; camera; microphone" allowfullscreen title="GDL Attendance"></iframe>
+    <iframe id="attendance-frame" src="https://script.google.com/macros/s/AKfycbxuTCJUJUTHnSiogMYOojF4wMAU5Pk1rZsXhHe6iaNbVYMHy9YysV3Wg4zPMJ4Ph04/exec?v=15.1" allow="geolocation; camera; microphone" allowfullscreen title="GDL Attendance"></iframe>
   </div>
 
 <script>
     // ───── Splash Screen Fader ─────
     let splashHidden = false;
+    let appReady = false;
+    let lastWrapperError = 'Starting wrapper V15.1';
+    let activeSelfiePopup = null;
+    let activeSelfieRequestId = '';
+    let activeSelfieCloseTimer = null;
+    let pendingSelfieLaunch = null;
     const SPLASH_MAX_WAIT_MS = 5000;
+    const ATTENDANCE_APP_URL = 'https://script.google.com/macros/s/AKfycbxuTCJUJUTHnSiogMYOojF4wMAU5Pk1rZsXhHe6iaNbVYMHy9YysV3Wg4zPMJ4Ph04/exec?v=15.1';
+    const STORAGE_PREFIX = 'gdlAttendance:';
     function hideSplash() {
       if (splashHidden) return;
       splashHidden = true;
@@ -200,6 +268,216 @@
     function setSplashStatus(text) {
       const el = document.getElementById('splash-status-text');
       if (el) el.textContent = text;
+    }
+
+    function frameEl() {
+      return document.getElementById('attendance-frame');
+    }
+
+    function postToFrame(payload) {
+      const frame = frameEl();
+      if (frame && frame.contentWindow) frame.contentWindow.postMessage(payload, '*');
+    }
+
+    function updateRecoveryNote() {
+      const note = document.getElementById('recovery-note');
+      if (!note) return;
+      const storageOk = (() => {
+        try {
+          localStorage.setItem(STORAGE_PREFIX + 'probe', '1');
+          localStorage.removeItem(STORAGE_PREFIX + 'probe');
+          return 'storage ok';
+        } catch (e) {
+          return 'storage blocked';
+        }
+      })();
+      note.textContent = 'V15.1 | ' + storageOk + ' | ' + lastWrapperError;
+    }
+
+    function showLaunchRecovery(reason) {
+      if (appReady) return;
+      lastWrapperError = reason || lastWrapperError;
+      updateRecoveryNote();
+      hideSplash();
+      const recovery = document.getElementById('launch-recovery');
+      if (recovery) recovery.style.display = 'flex';
+    }
+
+    function hideLaunchRecovery() {
+      const recovery = document.getElementById('launch-recovery');
+      if (recovery) recovery.style.display = 'none';
+    }
+
+    function retryAttendance() {
+      appReady = false;
+      splashHidden = false;
+      hideLaunchRecovery();
+      const splash = document.getElementById('splash-screen');
+      if (splash) {
+        splash.style.display = 'flex';
+        splash.style.opacity = '1';
+      }
+      setSplashStatus('Reconnecting...');
+      const frame = frameEl();
+      if (frame) frame.src = ATTENDANCE_APP_URL + '&r=' + Date.now();
+      setTimeout(() => { if (!appReady) showLaunchRecovery('Retry did not finish loading'); }, 9000);
+    }
+
+    async function refreshAppCache() {
+      lastWrapperError = 'Refreshing cache';
+      try {
+        if ('serviceWorker' in navigator) {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map(reg => reg.unregister()));
+        }
+        if ('caches' in window) {
+          const keys = await caches.keys();
+          await Promise.all(keys.map(key => caches.delete(key)));
+        }
+      } catch (e) {
+        lastWrapperError = 'Cache refresh warning: ' + (e && e.message ? e.message : e);
+      }
+      retryAttendance();
+    }
+
+    function openAttendanceDirect() {
+      window.open(ATTENDANCE_APP_URL + '&direct=1', '_blank', 'noopener');
+    }
+
+    function wrapperStorageKey(key) {
+      return STORAGE_PREFIX + key;
+    }
+
+    function getWrapperStorage(key) {
+      try { return localStorage.getItem(wrapperStorageKey(key)); } catch (e) { return null; }
+    }
+
+    function setWrapperStorage(key, value) {
+      try { localStorage.setItem(wrapperStorageKey(key), value == null ? '' : String(value)); return true; } catch (e) { return false; }
+    }
+
+    function removeWrapperStorage(key) {
+      try { localStorage.removeItem(wrapperStorageKey(key)); return true; } catch (e) { return false; }
+    }
+
+    function handleStorageRequest(data) {
+      let ok = true;
+      let value = null;
+      let values = {};
+      try {
+        if (data.type === 'GDL_STORAGE_GET') {
+          value = getWrapperStorage(data.key);
+        } else if (data.type === 'GDL_STORAGE_GET_MANY') {
+          (data.keys || []).forEach(key => { values[key] = getWrapperStorage(key); });
+        } else if (data.type === 'GDL_STORAGE_SET') {
+          ok = setWrapperStorage(data.key, data.value);
+        } else if (data.type === 'GDL_STORAGE_SET_MANY') {
+          Object.keys(data.values || {}).forEach(key => { if (!setWrapperStorage(key, data.values[key])) ok = false; });
+        } else if (data.type === 'GDL_STORAGE_REMOVE') {
+          ok = removeWrapperStorage(data.key);
+        } else if (data.type === 'GDL_STORAGE_REMOVE_MANY') {
+          (data.keys || []).forEach(key => { if (!removeWrapperStorage(key)) ok = false; });
+        }
+      } catch (e) {
+        ok = false;
+      }
+      postToFrame({ type: 'GDL_STORAGE_RESULT', requestId: data.requestId, ok, value, values });
+    }
+
+    function openSelfieFromWrapper(data) {
+      const requestId = data.requestId || ('selfie_' + Date.now());
+      const title = encodeURIComponent(data.title || '');
+      const sub = encodeURIComponent(data.sub || '');
+      const url = './selfie.html?v=15.1&requestId=' + encodeURIComponent(requestId) + '&title=' + title + '&sub=' + sub;
+      const w = 420, h = 720;
+      const left = Math.max(0, (window.screen.width - w) / 2);
+      const top = Math.max(0, (window.screen.height - h) / 2);
+      try {
+        if (activeSelfiePopup && !activeSelfiePopup.closed) activeSelfiePopup.close();
+      } catch (e) {}
+      try {
+        activeSelfiePopup = window.open(url, 'selfieCapture_' + requestId, `width=${w},height=${h},left=${left},top=${top}`);
+      } catch (e) {
+        activeSelfiePopup = null;
+      }
+      activeSelfieRequestId = requestId;
+      if (activeSelfieCloseTimer) clearInterval(activeSelfieCloseTimer);
+      if (!activeSelfiePopup) {
+        pendingSelfieLaunch = { requestId, url };
+        postToFrame({ type: 'GDL_SELFIE_OPENED', requestId, needsTap: true });
+        const launcher = document.getElementById('selfie-launcher');
+        if (launcher) launcher.style.display = 'flex';
+        return;
+      }
+      postToFrame({ type: 'GDL_SELFIE_OPENED', requestId });
+      activeSelfieCloseTimer = setInterval(() => {
+        if (activeSelfiePopup && activeSelfiePopup.closed) {
+          clearInterval(activeSelfieCloseTimer);
+          activeSelfieCloseTimer = null;
+          postToFrame({ type: 'SELFIE_CANCELLED', requestId: activeSelfieRequestId });
+          activeSelfiePopup = null;
+          activeSelfieRequestId = '';
+        }
+      }, 700);
+    }
+
+    function launchPendingSelfie() {
+      const pending = pendingSelfieLaunch;
+      if (!pending) return;
+      const launcher = document.getElementById('selfie-launcher');
+      if (launcher) launcher.style.display = 'none';
+      pendingSelfieLaunch = null;
+      const w = 420, h = 720;
+      const left = Math.max(0, (window.screen.width - w) / 2);
+      const top = Math.max(0, (window.screen.height - h) / 2);
+      try {
+        activeSelfiePopup = window.open(pending.url, 'selfieCapture_' + pending.requestId, `width=${w},height=${h},left=${left},top=${top}`);
+      } catch (e) {
+        activeSelfiePopup = null;
+      }
+      activeSelfieRequestId = pending.requestId;
+      if (activeSelfieCloseTimer) clearInterval(activeSelfieCloseTimer);
+      if (!activeSelfiePopup) {
+        postToFrame({ type: 'SELFIE_CANCELLED', requestId: pending.requestId });
+        activeSelfieRequestId = '';
+        return;
+      }
+      activeSelfieCloseTimer = setInterval(() => {
+        if (activeSelfiePopup && activeSelfiePopup.closed) {
+          clearInterval(activeSelfieCloseTimer);
+          activeSelfieCloseTimer = null;
+          postToFrame({ type: 'SELFIE_CANCELLED', requestId: activeSelfieRequestId });
+          activeSelfiePopup = null;
+          activeSelfieRequestId = '';
+        }
+      }, 700);
+    }
+
+    function cancelPendingSelfie() {
+      const pending = pendingSelfieLaunch;
+      pendingSelfieLaunch = null;
+      const launcher = document.getElementById('selfie-launcher');
+      if (launcher) launcher.style.display = 'none';
+      postToFrame({ type: 'SELFIE_CANCELLED', requestId: pending ? pending.requestId : activeSelfieRequestId });
+      activeSelfieRequestId = '';
+    }
+
+    function forwardSelfieResult(data) {
+      const requestId = data.requestId || activeSelfieRequestId;
+      if (activeSelfieCloseTimer) {
+        clearInterval(activeSelfieCloseTimer);
+        activeSelfieCloseTimer = null;
+      }
+      pendingSelfieLaunch = null;
+      const launcher = document.getElementById('selfie-launcher');
+      if (launcher) launcher.style.display = 'none';
+      postToFrame({
+        type: data.type === 'SELFIE_CAPTURED' || data.type === 'GDL_SELFIE_CAPTURED' ? 'SELFIE_CAPTURED' : 'SELFIE_CANCELLED',
+        requestId,
+        image: data.image || ''
+      });
+      activeSelfiePopup = null;
+      activeSelfieRequestId = '';
     }
 
     function postNotifyPermissionStatus() {
@@ -232,21 +510,42 @@
     }
 
     window.addEventListener('message', (event) => {
-      const frame = document.getElementById('attendance-frame');
-      if (frame && event.source !== frame.contentWindow) return;
+      const frame = frameEl();
+      const fromFrame = !!(frame && event.source === frame.contentWindow);
+      const fromSelfie = !!(activeSelfiePopup && event.source === activeSelfiePopup);
+      if (fromSelfie && event.data && typeof event.data === 'object' &&
+          (event.data.type === 'SELFIE_CAPTURED' || event.data.type === 'SELFIE_CANCELLED' ||
+           event.data.type === 'GDL_SELFIE_CAPTURED' || event.data.type === 'GDL_SELFIE_CANCELLED')) {
+        forwardSelfieResult(event.data);
+        return;
+      }
+      if (!fromFrame) return;
       if (event.data === 'hideSplash') {
+        appReady = true;
+        hideLaunchRecovery();
         hideSplash();
         return;
       }
       if (!event.data || typeof event.data !== 'object') return;
-      if (event.data.type === 'GDL_APP_READY') hideSplash();
+      if (event.data.type === 'GDL_APP_READY') {
+        appReady = true;
+        hideLaunchRecovery();
+        hideSplash();
+      }
       else if (event.data.type === 'GDL_REQUEST_NOTIFY_PERMISSION') requestWrapperNotificationPermission();
       else if (event.data.type === 'GDL_GET_NOTIFY_PERMISSION') postNotifyPermissionStatus();
       else if (event.data.type === 'GDL_NOTIFY') showWrapperNotification(event.data);
+      else if (event.data.type && event.data.type.indexOf('GDL_STORAGE_') === 0) handleStorageRequest(event.data);
+      else if (event.data.type === 'GDL_OPEN_SELFIE') openSelfieFromWrapper(event.data);
+      else if (event.data.type === 'GDL_CHILD_ERROR') {
+        lastWrapperError = event.data.message || 'App error';
+        updateRecoveryNote();
+      }
     });
 
     setTimeout(() => { if (!splashHidden) setSplashStatus('Opening attendance...'); }, 2500);
     setTimeout(() => { hideSplash(); }, SPLASH_MAX_WAIT_MS);
+    setTimeout(() => { if (!appReady && navigator.onLine) showLaunchRecovery('Attendance frame not ready'); }, 8500);
 
     if (!navigator.onLine) {
       document.getElementById('app-wrapper').style.display = 'none';
@@ -262,7 +561,7 @@
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js?v=15')
+        navigator.serviceWorker.register('./sw.js?v=15.1')
           .then(reg => reg.update())
           .catch(err => console.warn('SW registration failed:', err));
       });
