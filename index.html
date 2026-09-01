@@ -232,7 +232,7 @@
   <button id="install-btn">⬇ Install App</button>
 
   <div class="wrapper" id="app-wrapper">
-    <iframe id="attendance-frame" src="https://script.google.com/macros/s/AKfycbxuTCJUJUTHnSiogMYOojF4wMAU5Pk1rZsXhHe6iaNbVYMHy9YysV3Wg4zPMJ4Ph04/exec?v=15.1" allow="geolocation; camera; microphone" allowfullscreen title="GDL Attendance"></iframe>
+    <iframe id="attendance-frame" src="https://script.google.com/macros/s/AKfycbxuTCJUJUTHnSiogMYOojF4wMAU5Pk1rZsXhHe6iaNbVYMHy9YysV3Wg4zPMJ4Ph04/exec" allow="geolocation; camera; microphone" allowfullscreen title="GDL Attendance"></iframe>
   </div>
 
 <script>
@@ -245,7 +245,7 @@
     let activeSelfieCloseTimer = null;
     let pendingSelfieLaunch = null;
     const SPLASH_MAX_WAIT_MS = 5000;
-    const ATTENDANCE_APP_URL = 'https://script.google.com/macros/s/AKfycbxuTCJUJUTHnSiogMYOojF4wMAU5Pk1rZsXhHe6iaNbVYMHy9YysV3Wg4zPMJ4Ph04/exec?v=15.1';
+    const ATTENDANCE_APP_URL = 'https://script.google.com/macros/s/AKfycbxuTCJUJUTHnSiogMYOojF4wMAU5Pk1rZsXhHe6iaNbVYMHy9YysV3Wg4zPMJ4Ph04/exec';
     const STORAGE_PREFIX = 'gdlAttendance:';
     function hideSplash() {
       if (splashHidden) return;
@@ -319,7 +319,7 @@
       }
       setSplashStatus('Reconnecting...');
       const frame = frameEl();
-      if (frame) frame.src = ATTENDANCE_APP_URL + '&r=' + Date.now();
+      if (frame) frame.src = ATTENDANCE_APP_URL;
       setTimeout(() => { if (!appReady) showLaunchRecovery('Retry did not finish loading'); }, 9000);
     }
 
@@ -341,7 +341,7 @@
     }
 
     function openAttendanceDirect() {
-      window.open(ATTENDANCE_APP_URL + '&direct=1', '_blank', 'noopener');
+      window.open(ATTENDANCE_APP_URL, '_blank', 'noopener');
     }
 
     function wrapperStorageKey(key) {
