@@ -163,6 +163,9 @@
 
   // Read optional title/subtitle from URL params so the Apps Script side can customize the message
   const params = new URLSearchParams(window.location.search);
+  const requestId = params.get('requestId') || '';
+  const ua = navigator.userAgent || '';
+  const isIOSWebKit = /iphone|ipad|ipod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   if (params.get('title')) document.getElementById('capture-title').innerText = params.get('title');
   if (params.get('sub')) document.getElementById('capture-sub').innerText = params.get('sub');
 
@@ -200,7 +203,11 @@
     navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
       .then(s => {
         stream = s;
-        document.getElementById('camera-video').srcObject = s;
+        const video = document.getElementById('camera-video');
+        video.srcObject = s;
+        const playVideo = () => video.play().catch(() => setStatus('Camera is ready. Tap Capture when your face is visible.'));
+        if (video.readyState >= 1) playVideo();
+        else video.onloadedmetadata = playVideo;
         setStatus('');
         document.getElementById('capture-btn').innerHTML = '📸 Capture';
       })
@@ -231,6 +238,10 @@
 
   function takePhoto() {
     const video = document.getElementById('camera-video');
+    if (!stream || video.readyState < 2 || !video.videoWidth) {
+      setError('Camera is still starting. Please wait a moment, then tap Capture again.');
+      return;
+    }
     const canvas = document.getElementById('camera-canvas');
     canvas.width = video.videoWidth || 480;
     canvas.height = video.videoHeight || 480;
@@ -270,7 +281,7 @@
     stopCamera();
 
     if (window.opener) {
-      try { window.opener.postMessage({ type: 'SELFIE_CAPTURED', image: capturedBase64 }, '*'); } catch(e) {}
+      try { window.opener.postMessage({ type: 'SELFIE_CAPTURED', requestId, image: capturedBase64 }, '*'); } catch(e) {}
     }
 
     // Success UI
@@ -306,7 +317,7 @@
   function closeCapture() {
     stopCamera();
     if (window.opener) {
-      try { window.opener.postMessage({ type: 'SELFIE_CANCELLED' }, '*'); } catch(e) {}
+      try { window.opener.postMessage({ type: 'SELFIE_CANCELLED', requestId }, '*'); } catch(e) {}
     }
     try { window.close(); } catch(e) {}
   }
@@ -314,7 +325,19 @@
   // If the user closes the tab manually without confirming, release the camera
   window.addEventListener('beforeunload', stopCamera);
 
-  startCamera();
+  function waitForCameraTap() {
+    setError('');
+    setStatus('Tap Start Camera to allow camera access.');
+    document.getElementById('camera-video').style.display = 'none';
+    document.getElementById('camera-preview').style.display = 'none';
+    document.getElementById('cam-ring').style.display = 'none';
+    document.getElementById('actions-live').style.display = 'flex';
+    document.getElementById('actions-preview').style.display = 'none';
+    document.getElementById('capture-btn').innerHTML = 'Start Camera';
+  }
+
+  if (isIOSWebKit) waitForCameraTap();
+  else startCamera();
 </script>
 </body>
 </html>
