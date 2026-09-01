@@ -385,11 +385,32 @@
       postToFrame({ type: 'GDL_STORAGE_RESULT', requestId: data.requestId, ok, value, values });
     }
 
+    function isIOSLike() {
+      const ua = navigator.userAgent || '';
+      return /iphone|ipad|ipod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    }
+
+    function showSelfieLauncher(requestId, url) {
+      pendingSelfieLaunch = { requestId, url };
+      activeSelfieRequestId = requestId;
+      if (activeSelfieCloseTimer) {
+        clearInterval(activeSelfieCloseTimer);
+        activeSelfieCloseTimer = null;
+      }
+      postToFrame({ type: 'GDL_SELFIE_OPENED', requestId, needsTap: true });
+      const launcher = document.getElementById('selfie-launcher');
+      if (launcher) launcher.style.display = 'flex';
+    }
+
     function openSelfieFromWrapper(data) {
       const requestId = data.requestId || ('selfie_' + Date.now());
       const title = encodeURIComponent(data.title || '');
       const sub = encodeURIComponent(data.sub || '');
       const url = './selfie.html?v=15.1&requestId=' + encodeURIComponent(requestId) + '&title=' + title + '&sub=' + sub;
+      if (isIOSLike()) {
+        showSelfieLauncher(requestId, url);
+        return;
+      }
       const w = 420, h = 720;
       const left = Math.max(0, (window.screen.width - w) / 2);
       const top = Math.max(0, (window.screen.height - h) / 2);
@@ -408,6 +429,7 @@
         postToFrame({ type: 'GDL_SELFIE_OPENED', requestId, needsTap: true });
         const launcher = document.getElementById('selfie-launcher');
         if (launcher) launcher.style.display = 'flex';
+        showSelfieLauncher(requestId, url);
         return;
       }
       postToFrame({ type: 'GDL_SELFIE_OPENED', requestId });
