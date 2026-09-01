@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gdl-attendance-v15-1-20260901-ios-selfie-tap-101';
+const CACHE_NAME = 'gdl-attendance-v15-1-20260901-ios-selfie-tap-102';
 
 const ASSETS = [
   './',
