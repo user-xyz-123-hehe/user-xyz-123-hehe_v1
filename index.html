@@ -232,7 +232,7 @@
   <button id="install-btn">⬇ Install App</button>
 
   <div class="wrapper" id="app-wrapper">
-    <iframe id="https://script.google.com/a/macros/gdl.bt/s/AKfycbzJiZPFvLUH3tzKXDImwlbFsFlb3S4XVWjLngjW7x3KX-0L1VkrBZTylCjDAHVKrqh6/exec" allow="geolocation; camera; microphone" allowfullscreen title="GDL Attendance"></iframe>
+    <iframe id="attendance-frame" src="https://script.google.com/macros/s/AKfycbzJiZPFvLUH3tzKXDImwlbFsFlb3S4XVWjLngjW7x3KX-0L1VkrBZTylCjDAHVKrqh6/exec" allow="geolocation; camera; microphone" allowfullscreen title="GDL Attendance"></iframe>
   </div>
 
 <script>
@@ -247,7 +247,7 @@
     const SPLASH_TOTAL_VISIBLE_MS = 5000;
     const SPLASH_FADE_MS = 450;
     const SPLASH_MAX_WAIT_MS = Math.max(0, SPLASH_TOTAL_VISIBLE_MS - SPLASH_FADE_MS);
-    const ATTENDANCE_APP_URL = 'https://script.google.com/a/macros/gdl.bt/s/AKfycbzJiZPFvLUH3tzKXDImwlbFsFlb3S4XVWjLngjW7x3KX-0L1VkrBZTylCjDAHVKrqh6/exec';
+    const ATTENDANCE_APP_URL = 'https://script.google.com/macros/s/AKfycbzJiZPFvLUH3tzKXDImwlbFsFlb3S4XVWjLngjW7x3KX-0L1VkrBZTylCjDAHVKrqh6/exec';
     const STORAGE_PREFIX = 'gdlAttendance:';
     const SESSION_BUNDLE_KEY = 'sessionBundle';
     const SESSION_KEYS = ['savedEmpId', 'savedEmpName', 'savedEmpLocation', 'savedEmpType', 'deviceToken'];
@@ -857,14 +857,7 @@
         appReady = true;
         hideLaunchRecovery();
       }
-      else if (event.data.type === 'GDL_REQUEST_NOTIFY_PERMISSION') requestWrapperNotificationPermission();
-      else if (event.data.type === 'GDL_GET_NOTIFY_PERMISSION') postNotifyPermissionStatus();
-      else if (event.data.type === 'GDL_NOTIFY') showWrapperNotification(event.data);
-      else if (event.data.type === 'GDL_SESSION_GET' || event.data.type === 'GDL_SESSION_SAVE' || event.data.type === 'GDL_SESSION_CLEAR' ||
-               event.data.type === 'GDL_STORAGE_SYNC_REQUEST' || event.data.type === 'GDL_STORAGE_SYNC_DATA' || event.data.type === 'GDL_STORAGE_CLEAR') handleSessionRequest(event.data);
-      else if (event.data.type && event.data.type.indexOf('GDL_STORAGE_') === 0) handleStorageRequest(event.data);
       else if (event.data.type === 'GDL_GEO_SAMPLE') handleGeoSampleRequest(event.data);
-      else if (event.data.type === 'GDL_OPEN_SELFIE') openSelfieFromWrapper(event.data);
       else if (event.data.type === 'GDL_CHILD_ERROR') {
         lastWrapperError = event.data.message || 'App error';
         updateRecoveryNote();
@@ -888,7 +881,7 @@
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js?v=15.1')
+        navigator.serviceWorker.register('./sw.js?v=15.2')
           .then(reg => reg.update())
           .catch(err => console.warn('SW registration failed:', err));
       });
