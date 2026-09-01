@@ -245,6 +245,8 @@
     let activeSelfieCloseTimer = null;
     let pendingSelfieLaunch = null;
     const SPLASH_MAX_WAIT_MS = 5000;
+    const SPLASH_TOTAL_VISIBLE_MS = 5000;
+    const SPLASH_FADE_MS = 450;
     const ATTENDANCE_APP_URL = 'https://script.google.com/macros/s/AKfycbzDYQ67C-7jfa9_34RzeVUtgpm7sGAV3VPjTYHLAuW0b2xnWi0HWYlCHUcBagfs-64W/exec';
     const STORAGE_PREFIX = 'gdlAttendance:';
     const SESSION_BUNDLE_KEY = 'sessionBundle';
@@ -257,6 +259,7 @@
       const splash = document.getElementById('splash-screen');
       splash.style.opacity = '0';
       setTimeout(() => splash.style.display = 'none', 450);
+      setTimeout(() => splash.style.display = 'none', SPLASH_FADE_MS);
     }
 
     // Update splash status text while waiting (purely cosmetic, reassures the user something is happening)
