@@ -383,6 +383,132 @@
         ok = false;
       }
       postToFrame({ type: 'GDL_STORAGE_RESULT', requestId: data.requestId, ok, value, values });
+      postToFrame({ type: 'GDL_STORAGE_RESULT', requestId: data.requestId, ok, value, values, geoSupported: canUseWrapperGeolocation() });
+    }
+
+    let wrapperGeoSamples = [];
+
+    function canUseWrapperGeolocation() {
+      return !!(navigator.geolocation && (window.isSecureContext || location.protocol === 'https:'));
+    }
+
+    function serializeGeoPosition(pos) {
+      if (!pos || !pos.coords) return null;
+      const lat = Number(pos.coords.latitude);
+      const lng = Number(pos.coords.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+      const accuracy = Number(pos.coords.accuracy);
+      return {
+        timestamp: pos.timestamp || Date.now(),
+        coords: {
+          latitude: lat,
+          longitude: lng,
+          accuracy: Number.isFinite(accuracy) ? accuracy : null,
+          altitude: pos.coords.altitude == null ? null : Number(pos.coords.altitude),
+          altitudeAccuracy: pos.coords.altitudeAccuracy == null ? null : Number(pos.coords.altitudeAccuracy),
+          heading: pos.coords.heading == null ? null : Number(pos.coords.heading),
+          speed: pos.coords.speed == null ? null : Number(pos.coords.speed)
+        }
+      };
+    }
+
+    function rememberWrapperGeo(pos) {
+      const serialized = serializeGeoPosition(pos);
+      if (!serialized) return null;
+      wrapperGeoSamples.push(serialized);
+      const cutoff = Date.now() - 30000;
+      wrapperGeoSamples = wrapperGeoSamples.filter(item => (item.timestamp || 0) >= cutoff).slice(-8);
+      return serialized;
+    }
+
+    function freshWrapperGeoSamples(maxAgeMs) {
+      const cutoff = Date.now() - (maxAgeMs || 15000);
+      return wrapperGeoSamples.filter(item => (item.timestamp || 0) >= cutoff);
+    }
+
+    function wrapperGeoErrorMessage(err) {
+      if (err && err.code === 1) return 'Location Blocked - allow Location for this app';
+      if (err && err.code === 2) return 'Location unavailable - move near a window and retry';
+      if (err && err.code === 3) return 'Still locating device...';
+      return 'Location Blocked';
+    }
+
+    function postWrapperGeoResult(data, payload) {
+      postToFrame(Object.assign({
+        type: 'GDL_GEO_RESULT',
+        requestId: data.requestId,
+        ok: false,
+        samples: [],
+        geoSupported: canUseWrapperGeolocation()
+      }, payload || {}));
+    }
+
+    function handleGeoSampleRequest(data) {
+      if (!data || !data.requestId) return;
+      if (!canUseWrapperGeolocation()) {
+        postWrapperGeoResult(data, {
+          ok: false,
+          geoSupported: false,
+          message: navigator.geolocation ? 'Open the secure app link to use location' : 'Location is not supported on this device'
+        });
+        return;
+      }
+
+      const cached = freshWrapperGeoSamples(10000);
+      if (cached.length) {
+        postWrapperGeoResult(data, { ok: true, samples: cached });
+        return;
+      }
+
+      const durationMs = Math.min(8000, Math.max(1500, Number(data.durationMs) || 3500));
+      const requestSamples = [];
+      let done = false;
+      let watchId = null;
+      let lastErrorMessage = '';
+
+      const add = pos => {
+        const serialized = rememberWrapperGeo(pos);
+        if (serialized) requestSamples.push(serialized);
+        return serialized;
+      };
+
+      const finish = (ok, message) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        if (watchId !== null) {
+          try { navigator.geolocation.clearWatch(watchId); } catch (e) {}
+        }
+        const samples = requestSamples.length ? requestSamples : freshWrapperGeoSamples(15000);
+        postWrapperGeoResult(data, {
+          ok: !!(ok || samples.length),
+          samples,
+          message: samples.length ? '' : (message || lastErrorMessage || 'Location Blocked')
+        });
+      };
+
+      const timer = setTimeout(() => finish(requestSamples.length > 0, ''), durationMs);
+
+      try {
+        watchId = navigator.geolocation.watchPosition(pos => {
+          const serialized = add(pos);
+          const acc = serialized && serialized.coords ? Number(serialized.coords.accuracy) : null;
+          if (acc && acc <= 80) finish(true, '');
+        }, err => {
+          lastErrorMessage = wrapperGeoErrorMessage(err);
+          if (!requestSamples.length && err && err.code === 1) finish(false, lastErrorMessage);
+        }, { enableHighAccuracy: true, maximumAge: 5000, timeout: durationMs + 2500 });
+
+        navigator.geolocation.getCurrentPosition(pos => {
+          const serialized = add(pos);
+          const acc = serialized && serialized.coords ? Number(serialized.coords.accuracy) : null;
+          if (acc && acc <= 120) finish(true, '');
+        }, err => {
+          lastErrorMessage = wrapperGeoErrorMessage(err);
+        }, { enableHighAccuracy: true, maximumAge: 5000, timeout: durationMs + 2500 });
+      } catch (e) {
+        finish(false, e && e.message ? e.message : 'Location Blocked');
+      }
     }
 
     function isIOSLike() {
@@ -559,6 +685,7 @@
       else if (event.data.type === 'GDL_GET_NOTIFY_PERMISSION') postNotifyPermissionStatus();
       else if (event.data.type === 'GDL_NOTIFY') showWrapperNotification(event.data);
       else if (event.data.type && event.data.type.indexOf('GDL_STORAGE_') === 0) handleStorageRequest(event.data);
+      else if (event.data.type === 'GDL_GEO_SAMPLE') handleGeoSampleRequest(event.data);
       else if (event.data.type === 'GDL_OPEN_SELFIE') openSelfieFromWrapper(event.data);
       else if (event.data.type === 'GDL_CHILD_ERROR') {
         lastWrapperError = event.data.message || 'App error';
