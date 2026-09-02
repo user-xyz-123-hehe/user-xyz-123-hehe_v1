@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gdl-attendance-v15-2-eidcid';
+const CACHE_NAME = 'gdl-attendance-v15-2-eidcid-new1';
 
 const ASSETS = [
   './',
