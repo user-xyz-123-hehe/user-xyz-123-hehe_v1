@@ -1,4 +1,4 @@
-// V15.9.2: online-only. No Cache Storage writes or cached fallbacks.
+// V15.9.3: online-only. No Cache Storage writes or cached fallbacks.
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', event => {
   event.waitUntil(caches.keys().then(keys => Promise.all(
