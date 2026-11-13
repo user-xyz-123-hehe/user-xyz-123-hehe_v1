@@ -1,4 +1,4 @@
-// V15.9.1: Attendance requires a network connection. Never cache login/challenge responses.
+// V15.9.1.1: Attendance requires a network connection. Never cache login/challenge responses.
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', event => {
   event.waitUntil(caches.keys().then(keys => Promise.all(
