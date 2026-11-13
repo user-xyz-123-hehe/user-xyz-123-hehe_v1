@@ -199,6 +199,8 @@
     </div>
     <div id="captcha-widget" style="margin-top:24px;min-height:65px"></div>
     <button type="button" onclick="retryAttendance()" style="margin-top:20px;padding:10px 22px;cursor:pointer">Retry</button>
+    <button type="button" onclick="refreshInstalledApp()" style="margin-top:12px;padding:10px 22px;cursor:pointer">Refresh installed app</button>
+    <small style="margin-top:12px;color:#47554e">V15.9.1</small>
   </div>
 
   <div id="offline-fallback">
@@ -211,7 +213,7 @@
   <button id="install-btn">⬇ Install App</button>
 
   <div class="wrapper" id="app-wrapper">
-    <iframe id="attendance-frame" style="visibility:hidden" allow="geolocation; camera; microphone" allowfullscreen title="GDL Attendance"></iframe>
+    <iframe id="attendance-frame" loading="eager" inert aria-hidden="true" allow="geolocation; camera; microphone" allowfullscreen title="GDL Attendance"></iframe>
   </div>
 
 
@@ -227,11 +229,12 @@ const statusText=document.getElementById('splash-status-text');
 let child=null, childOrigin='', requestId='', proof='', widgetId=null, gateVerified=false, appReady=false, started=false;
 const loginStorageKey='gdlEmployeeLoginV156';
 function showGate(message) {
-  gate.style.display='flex';frame.style.visibility='hidden';statusText.textContent=message;
+  // Keep the frame rendered behind the opaque gate so mobile browsers can start it.
+  gate.style.display='flex';frame.setAttribute('inert','');frame.setAttribute('aria-hidden','true');statusText.textContent=message;
 }
 function showApplication() {
   if(!gateVerified || !appReady)return;
-  gate.style.display='none';frame.style.visibility='visible';
+  gate.style.display='none';frame.removeAttribute('inert');frame.removeAttribute('aria-hidden');
 }
 function sendChild(payload) {
   if(child)child.postMessage(Object.assign({},payload,{bridgeToken}),childOrigin);
@@ -243,13 +246,31 @@ function deliverProof() {
   sendChild({type:'GDL_CAPTCHA_TOKEN',requestId,token});
 }
 function retryAttendance(){window.location.reload();}
+async function refreshInstalledApp() {
+  showGate('Refreshing the installed app…');
+  try {
+    if('serviceWorker' in navigator) {
+      const registration=await navigator.serviceWorker.getRegistration('./');
+      if(registration)await registration.update();
+    }
+    if('caches' in window) {
+      const names=await window.caches.keys();
+      await Promise.all(names.filter(name=>name.startsWith('gdl-attendance-')).map(name=>window.caches.delete(name)));
+    }
+    const fresh=new URL(window.location.href);
+    fresh.searchParams.set('appRefresh',Date.now().toString());
+    window.location.replace(fresh.href);
+  }catch(_){statusText.textContent='Close the installed app, then open attendance.gdl.bt in Chrome or Safari to retry.';}
+}
 function startFrame() {
   if(started)return;started=true;
   const url=new URL(ATTENDANCE_APP_URL);
   url.searchParams.set('parentOrigin','https://attendance.gdl.bt');
   url.searchParams.set('bridgeToken',bridgeToken);
   frame.src=url.href;
-  setTimeout(()=>{if(!appReady)showGate('The app has not loaded. Use Retry to reconnect.');},60000);
+  setTimeout(()=>{
+    if(!appReady)showGate(child ? 'The app connected but could not finish loading. Use Retry.' : 'The attendance app did not connect. Try Refresh installed app, or open attendance.gdl.bt in Chrome or Safari.');
+  },60000);
 }
 function turnstileReady() {
   if(window.location.origin!=='https://attendance.gdl.bt'){
@@ -258,7 +279,7 @@ function turnstileReady() {
   widgetId=turnstile.render('#captcha-widget',{
     sitekey:TURNSTILE_SITE_KEY,action:'attendance_entry',cData:bridgeToken,
     theme:'light',
-    callback:token=>{proof=token;statusText.textContent='Opening attendance…';startFrame();deliverProof();},
+    callback:token=>{proof=token;statusText.textContent='Connecting to attendance…';startFrame();deliverProof();},
     'expired-callback':()=>{proof='';if(!gateVerified)showGate('Security check expired. Please complete it again.');},
     'error-callback':()=>{proof='';showGate('Security check unavailable. Check your connection and use Retry.');},
     'timeout-callback':()=>{proof='';showGate('Security check timed out. Use Retry to try again.');}
@@ -277,7 +298,7 @@ window.addEventListener('message',event=>{
   const data=event.data;
   if(!data || typeof data!=='object' || data.bridgeToken!==bridgeToken)return;
   if(!child){
-    if(data.type!=='GDL_CAPTCHA_READY' || !/^https:\/\/[a-z0-9-]+-script\.googleusercontent\.com$/.test(event.origin) || !event.source)return;
+    if(!['GDL_CAPTCHA_READY','GDL_CHILD_ERROR'].includes(data.type) || !/^https:\/\/[a-z0-9-]+-script\.googleusercontent\.com$/.test(event.origin) || !event.source)return;
     child=event.source;childOrigin=event.origin;
   }
   if(event.source!==child || event.origin!==childOrigin)return;
@@ -311,7 +332,7 @@ window.addEventListener('message',event=>{
   }
 });
 window.addEventListener('offline',()=>showGate('You are offline. Reconnect and use Retry.'));
-if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js?v=15.9').catch(()=>{});
+if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js?v=15.9.1',{updateViaCache:'none'}).catch(()=>{});
 setTimeout(()=>{if(widgetId===null)showGate('Security check did not load. Check your connection and use Retry.');},20000);
 
     let deferredPrompt = null;
