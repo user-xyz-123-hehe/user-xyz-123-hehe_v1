@@ -195,9 +195,10 @@
     <h1 class="splash-title">GDL <span class="accent">Attendance</span></h1>
     <div class="splash-status">
       <span class="splash-spinner"></span>
-      <span id="splash-status-text">Connecting securely…</span>
+      <span id="splash-status-text" role="status" aria-live="polite">Complete the security check to continue.</span>
     </div>
-    <div class="splash-progress"></div>
+    <div id="captcha-widget" style="margin-top:24px;min-height:65px"></div>
+    <button type="button" onclick="retryAttendance()" style="margin-top:20px;padding:10px 22px;cursor:pointer">Retry</button>
   </div>
 
   <div id="offline-fallback">
@@ -207,687 +208,112 @@
     <button onclick="window.location.reload()">Try Again</button>
   </div>
 
-  <div id="launch-recovery">
-    <div class="recovery-card">
-      <h2>Attendance Is Taking Longer</h2>
-      <p>The app did not finish loading. This usually means Safari kept an old file or the attendance server stalled.</p>
-      <div class="recovery-actions">
-        <button class="recovery-primary" onclick="retryAttendance()">Retry</button>
-        <button class="recovery-soft" onclick="refreshAppCache()">Refresh App Cache</button>
-        <button class="recovery-soft" onclick="openAttendanceDirect()">Open Direct</button>
-      </div>
-      <div class="recovery-note" id="recovery-note">V15.1</div>
-    </div>
-  </div>
-
-  <div id="selfie-launcher">
-    <div class="selfie-launch-card">
-      <h2>Open Camera</h2>
-      <p>Safari needs one more tap to open the secure selfie camera.</p>
-      <button class="open-camera" onclick="launchPendingSelfie()">Open Camera</button>
-      <button class="cancel-camera" onclick="cancelPendingSelfie()">Cancel</button>
-    </div>
-  </div>
-
   <button id="install-btn">⬇ Install App</button>
 
   <div class="wrapper" id="app-wrapper">
-    <iframe id="attendance-frame" src="https://script.google.com/macros/s/AKfycbywtyh-0Mi7X2mEBkuLAK75zGIKng4SpeV2PzDsR6TWg_OfKjbcJV7hJeZzw-3R7qyx/exec" allow="geolocation; camera; microphone" allowfullscreen title="GDL Attendance"></iframe>
+    <iframe id="attendance-frame" style="visibility:hidden" allow="geolocation; camera; microphone" allowfullscreen title="GDL Attendance"></iframe>
   </div>
 
+
 <script>
-    // ───── Splash Screen Fader ─────
-    let splashHidden = false;
-    let appReady = false;
-    let lastWrapperError = 'Starting wrapper V15.1';
-    let activeSelfiePopup = null;
-    let activeSelfieRequestId = '';
-    let activeSelfieCloseTimer = null;
-    let pendingSelfieLaunch = null;
-    const SPLASH_TOTAL_VISIBLE_MS = 5000;
-    const SPLASH_FADE_MS = 450;
-    const SPLASH_MAX_WAIT_MS = Math.max(0, SPLASH_TOTAL_VISIBLE_MS - SPLASH_FADE_MS);
-    const ATTENDANCE_APP_URL = 'https://script.google.com/macros/s/AKfycbywtyh-0Mi7X2mEBkuLAK75zGIKng4SpeV2PzDsR6TWg_OfKjbcJV7hJeZzw-3R7qyx/exec';
-    const STORAGE_PREFIX = 'gdlAttendance:';
-    const SESSION_BUNDLE_KEY = 'sessionBundle';
-    const SESSION_KEYS = ['savedEmpId', 'savedEmpName', 'savedEmpLocation', 'savedEmpType', 'deviceToken'];
-    const WRAPPER_DB_NAME = 'GDLAttendanceWrapperDB';
-    const WRAPPER_DB_STORE = 'kv';
-    function hideSplash() {
-      if (splashHidden) return;
-      splashHidden = true;
-      const splash = document.getElementById('splash-screen');
-      splash.style.opacity = '0';
-      setTimeout(() => splash.style.display = 'none', SPLASH_FADE_MS);
-    }
-
-    // Update splash status text while waiting (purely cosmetic, reassures the user something is happening)
-    const statusMessages = ['Connecting securely…', 'Loading attendance data…', 'Waiting for the attendance server…'];
-    let statusIdx = 0;
-    const statusInterval = setInterval(() => {
-      if (splashHidden) { clearInterval(statusInterval); return; }
-      statusIdx = (statusIdx + 1) % statusMessages.length;
-      const el = document.getElementById('splash-status-text');
-      if (el) el.textContent = statusMessages[statusIdx];
-    }, 2200);
-
-    function setSplashStatus(text) {
-      const el = document.getElementById('splash-status-text');
-      if (el) el.textContent = text;
-    }
-
-    function frameEl() {
-      return document.getElementById('attendance-frame');
-    }
-
-    function postToFrame(payload) {
-      const frame = frameEl();
-      if (frame && frame.contentWindow) frame.contentWindow.postMessage(payload, '*');
-    }
-
-    function updateRecoveryNote() {
-      const note = document.getElementById('recovery-note');
-      if (!note) return;
-      const storageOk = (() => {
-        try {
-          localStorage.setItem(STORAGE_PREFIX + 'probe', '1');
-          localStorage.removeItem(STORAGE_PREFIX + 'probe');
-          return 'storage ok';
-        } catch (e) {
-          return 'storage blocked';
-        }
-      })();
-      note.textContent = 'V15.1 | ' + storageOk + ' | ' + lastWrapperError;
-    }
-
-    function showLaunchRecovery(reason) {
-      lastWrapperError = reason || lastWrapperError;
-      updateRecoveryNote();
-      hideLaunchRecovery();
-    }
-
-    function hideLaunchRecovery() {
-      const recovery = document.getElementById('launch-recovery');
-      if (recovery) recovery.style.display = 'none';
-    }
-
-    function retryAttendance() {
-      appReady = false;
-      splashHidden = false;
-      hideLaunchRecovery();
-      const splash = document.getElementById('splash-screen');
-      if (splash) {
-        splash.style.display = 'flex';
-        splash.style.opacity = '1';
+'use strict';
+const TURNSTILE_SITE_KEY = '0x4AAAAAAF_GPBg4z9QM1oCW';
+// Keep this deployment ID when updating the existing Apps Script deployment.
+const ATTENDANCE_APP_URL = 'https://script.google.com/macros/s/AKfycbywtyh-0Mi7X2mEBkuLAK75zGIKng4SpeV2PzDsR6TWg_OfKjbcJV7hJeZzw-3R7qyx/exec';
+const bridgeToken = Array.from(crypto.getRandomValues(new Uint8Array(16)),v=>v.toString(16).padStart(2,'0')).join('');
+const frame=document.getElementById('attendance-frame');
+const gate=document.getElementById('splash-screen');
+const statusText=document.getElementById('splash-status-text');
+let child=null, childOrigin='', requestId='', proof='', widgetId=null, gateVerified=false, appReady=false, started=false;
+const loginStorageKey='gdlEmployeeLoginV156';
+function showGate(message) {
+  gate.style.display='flex';frame.style.visibility='hidden';statusText.textContent=message;
+}
+function showApplication() {
+  if(!gateVerified || !appReady)return;
+  gate.style.display='none';frame.style.visibility='visible';
+}
+function sendChild(payload) {
+  if(child)child.postMessage(Object.assign({},payload,{bridgeToken}),childOrigin);
+}
+function deliverProof() {
+  if(!child || !requestId || !proof)return;
+  const token=proof;proof='';
+  statusText.textContent='Verifying security check…';
+  sendChild({type:'GDL_CAPTCHA_TOKEN',requestId,token});
+}
+function retryAttendance(){window.location.reload();}
+function startFrame() {
+  if(started)return;started=true;
+  const url=new URL(ATTENDANCE_APP_URL);
+  url.searchParams.set('parentOrigin','https://attendance.gdl.bt');
+  url.searchParams.set('bridgeToken',bridgeToken);
+  frame.src=url.href;
+  setTimeout(()=>{if(!appReady)showGate('The app has not loaded. Use Retry to reconnect.');},60000);
+}
+function turnstileReady() {
+  if(window.location.origin!=='https://attendance.gdl.bt'){
+    showGate('Open attendance.gdl.bt to use this attendance portal.');return;
+  }
+  widgetId=turnstile.render('#captcha-widget',{
+    sitekey:TURNSTILE_SITE_KEY,action:'attendance_entry',cData:bridgeToken,
+    theme:'light',
+    callback:token=>{proof=token;statusText.textContent='Opening attendance…';startFrame();deliverProof();},
+    'expired-callback':()=>{proof='';if(!gateVerified)showGate('Security check expired. Please complete it again.');},
+    'error-callback':()=>{proof='';showGate('Security check unavailable. Check your connection and use Retry.');},
+    'timeout-callback':()=>{proof='';showGate('Security check timed out. Use Retry to try again.');}
+  });
+}
+function cleanSession(value) {
+  if(!value || typeof value.loginToken!=='string' || value.loginToken.length>4096 || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}$/.test(value.loginToken))return null;
+  const clean={loginToken:value.loginToken};
+  for(const key of ['empId','empName','empLocation','empType']){
+    if(typeof value[key]!=='string' || value[key].length>500)return null;
+    clean[key]=value[key];
+  }
+  return clean;
+}
+window.addEventListener('message',event=>{
+  const data=event.data;
+  if(!data || typeof data!=='object' || data.bridgeToken!==bridgeToken)return;
+  if(!child){
+    if(data.type!=='GDL_CAPTCHA_READY' || !/^https:\/\/[a-z0-9-]+-script\.googleusercontent\.com$/.test(event.origin) || !event.source)return;
+    child=event.source;childOrigin=event.origin;
+  }
+  if(event.source!==child || event.origin!==childOrigin)return;
+  if(data.type==='GDL_CAPTCHA_READY'){
+    if(typeof data.requestId!=='string' || !/^[a-f0-9-]{36}$/.test(data.requestId))return;
+    if(requestId===data.requestId)return;
+    requestId=data.requestId;gateVerified=false;
+    showGate('Complete the security check to continue.');
+    if(proof)deliverProof();else if(widgetId!==null)turnstile.reset(widgetId);
+  }else if(data.type==='GDL_CAPTCHA_VERIFIED' && data.requestId===requestId){
+    gateVerified=true;statusText.textContent='Loading attendance…';showApplication();
+  }else if(data.type==='GDL_CAPTCHA_ERROR' && data.requestId===requestId){
+    gateVerified=false;showGate('Verification failed. Use Retry to try again.');
+  }else if(data.type==='GDL_APP_READY'){
+    appReady=true;showApplication();
+  }else if(data.type==='GDL_CHILD_ERROR'){
+    if(!appReady)showGate('The app could not start. Use Retry to reconnect.');
+  }else if(gateVerified && ['GDL_LOGIN_GET','GDL_LOGIN_SAVE','GDL_LOGIN_CLEAR'].includes(data.type)){
+    if(typeof data.requestId!=='string' || data.requestId.length>100)return;
+    let session=null,ok=true;
+    try {
+      if(data.type==='GDL_LOGIN_GET')session=cleanSession(JSON.parse(localStorage.getItem(loginStorageKey)||'null'));
+      if(data.type==='GDL_LOGIN_SAVE'){
+        session=cleanSession(data.session);
+        if(!session)throw new Error('Invalid session');
+        localStorage.setItem(loginStorageKey,JSON.stringify(session));
       }
-      setSplashStatus('Reconnecting...');
-      const frame = frameEl();
-      if (frame) frame.src = ATTENDANCE_APP_URL;
-    }
+      if(data.type==='GDL_LOGIN_CLEAR')localStorage.removeItem(loginStorageKey);
+    }catch(_){ok=false;}
+    sendChild({type:'GDL_LOGIN_RESULT',requestId:data.requestId,ok,session});
+  }
+});
+window.addEventListener('offline',()=>showGate('You are offline. Reconnect and use Retry.'));
+if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js?v=15.9').catch(()=>{});
+setTimeout(()=>{if(widgetId===null)showGate('Security check did not load. Check your connection and use Retry.');},20000);
 
-    async function refreshAppCache() {
-      lastWrapperError = 'Refreshing cache';
-      try {
-        if ('serviceWorker' in navigator) {
-          const regs = await navigator.serviceWorker.getRegistrations();
-          await Promise.all(regs.map(reg => reg.unregister()));
-        }
-        if ('caches' in window) {
-          const keys = await caches.keys();
-          await Promise.all(keys.map(key => caches.delete(key)));
-        }
-      } catch (e) {
-        lastWrapperError = 'Cache refresh warning: ' + (e && e.message ? e.message : e);
-      }
-      retryAttendance();
-    }
-
-    function openAttendanceDirect() {
-      window.open(ATTENDANCE_APP_URL, '_blank', 'noopener');
-    }
-
-    function wrapperStorageKey(key) {
-      return STORAGE_PREFIX + key;
-    }
-
-    function getWrapperStorage(key) {
-      try { return localStorage.getItem(wrapperStorageKey(key)); } catch (e) { return null; }
-    }
-
-    function setWrapperStorage(key, value) {
-      try { localStorage.setItem(wrapperStorageKey(key), value == null ? '' : String(value)); return true; } catch (e) { return false; }
-    }
-
-    function removeWrapperStorage(key) {
-      try { localStorage.removeItem(wrapperStorageKey(key)); return true; } catch (e) { return false; }
-    }
-
-    function openWrapperDB() {
-      return new Promise(resolve => {
-        if (!('indexedDB' in window)) { resolve(null); return; }
-        try {
-          const req = indexedDB.open(WRAPPER_DB_NAME, 1);
-          req.onupgradeneeded = () => {
-            const db = req.result;
-            if (!db.objectStoreNames.contains(WRAPPER_DB_STORE)) db.createObjectStore(WRAPPER_DB_STORE);
-          };
-          req.onsuccess = () => resolve(req.result);
-          req.onerror = () => resolve(null);
-        } catch (e) {
-          resolve(null);
-        }
-      });
-    }
-
-    async function wrapperIdbGet(key) {
-      const db = await openWrapperDB();
-      if (!db) return null;
-      return new Promise(resolve => {
-        try {
-          const tx = db.transaction(WRAPPER_DB_STORE, 'readonly');
-          const req = tx.objectStore(WRAPPER_DB_STORE).get(key);
-          req.onsuccess = () => resolve(req.result || null);
-          req.onerror = () => resolve(null);
-        } catch (e) {
-          resolve(null);
-        }
-      });
-    }
-
-    async function wrapperIdbSet(key, value) {
-      const db = await openWrapperDB();
-      if (!db) return false;
-      return new Promise(resolve => {
-        try {
-          const tx = db.transaction(WRAPPER_DB_STORE, 'readwrite');
-          tx.objectStore(WRAPPER_DB_STORE).put(value, key);
-          tx.oncomplete = () => resolve(true);
-          tx.onerror = () => resolve(false);
-        } catch (e) {
-          resolve(false);
-        }
-      });
-    }
-
-    async function wrapperIdbRemove(key) {
-      const db = await openWrapperDB();
-      if (!db) return false;
-      return new Promise(resolve => {
-        try {
-          const tx = db.transaction(WRAPPER_DB_STORE, 'readwrite');
-          tx.objectStore(WRAPPER_DB_STORE).delete(key);
-          tx.oncomplete = () => resolve(true);
-          tx.onerror = () => resolve(false);
-        } catch (e) {
-          resolve(false);
-        }
-      });
-    }
-
-    function normalizeWrapperSession(raw) {
-      if (!raw) return null;
-      let src = raw;
-      if (typeof src === 'string') {
-        try { src = JSON.parse(src); } catch (e) { return null; }
-      }
-      if (src.session && typeof src.session === 'object') src = src.session;
-      const empId = (src.empId || src.savedEmpId || '').toString().trim();
-      const deviceToken = (src.deviceToken || '').toString().trim();
-      if (!deviceToken) return null;
-      return {
-        empId,
-        empName: (src.empName || src.savedEmpName || '').toString(),
-        empLocation: (src.empLocation || src.savedEmpLocation || '').toString(),
-        empType: (src.empType || src.savedEmpType || 'Regular').toString(),
-        deviceToken,
-        savedAt: Number(src.savedAt) || Date.now(),
-        build: src.build || 'V15.1'
-      };
-    }
-
-    function legacySessionBundle(overrides) {
-      const src = overrides || {};
-      return normalizeWrapperSession({
-        empId: src.empId || src.savedEmpId || getWrapperStorage('savedEmpId') || '',
-        empName: src.empName || src.savedEmpName || getWrapperStorage('savedEmpName') || '',
-        empLocation: src.empLocation || src.savedEmpLocation || getWrapperStorage('savedEmpLocation') || '',
-        empType: src.empType || src.savedEmpType || getWrapperStorage('savedEmpType') || 'Regular',
-        deviceToken: src.deviceToken || getWrapperStorage('deviceToken') || '',
-        savedAt: src.savedAt || Date.now(),
-        build: src.build || 'V15.1'
-      });
-    }
-
-    function writeWrapperSessionLocal(bundle) {
-      const normalized = normalizeWrapperSession(bundle);
-      if (!normalized) return false;
-      const json = JSON.stringify(normalized);
-      let ok = setWrapperStorage(SESSION_BUNDLE_KEY, json);
-      if (normalized.empId) ok = setWrapperStorage('savedEmpId', normalized.empId) && ok;
-      if (normalized.empName) ok = setWrapperStorage('savedEmpName', normalized.empName) && ok;
-      if (normalized.empLocation) ok = setWrapperStorage('savedEmpLocation', normalized.empLocation) && ok;
-      if (normalized.empType) ok = setWrapperStorage('savedEmpType', normalized.empType) && ok;
-      if (normalized.deviceToken) ok = setWrapperStorage('deviceToken', normalized.deviceToken) && ok;
-      return ok;
-    }
-
-    async function loadWrapperSessionBundle(repair) {
-      const candidates = [];
-      const localBundle = normalizeWrapperSession(getWrapperStorage(SESSION_BUNDLE_KEY));
-      if (localBundle) candidates.push(localBundle);
-      const idbBundle = normalizeWrapperSession(await wrapperIdbGet(SESSION_BUNDLE_KEY));
-      if (idbBundle) candidates.push(idbBundle);
-      const legacyBundle = legacySessionBundle();
-      if (legacyBundle) candidates.push(legacyBundle);
-      if (!candidates.length) return null;
-      candidates.sort((a, b) => (Number(b.savedAt) || 0) - (Number(a.savedAt) || 0));
-      const best = candidates[0];
-      if (repair !== false) {
-        writeWrapperSessionLocal(best);
-        wrapperIdbSet(SESSION_BUNDLE_KEY, JSON.stringify(best));
-      }
-      return best;
-    }
-
-    async function saveWrapperSessionBundle(session) {
-      const existing = await loadWrapperSessionBundle(false);
-      const merged = normalizeWrapperSession(Object.assign({}, existing || {}, session || {}, { savedAt: Date.now(), build: 'V15.1' }));
-      if (!merged) return false;
-      const localOk = writeWrapperSessionLocal(merged);
-      const idbOk = await wrapperIdbSet(SESSION_BUNDLE_KEY, JSON.stringify(merged));
-      return localOk || idbOk;
-    }
-
-    async function clearWrapperSessionBundle() {
-      removeWrapperStorage(SESSION_BUNDLE_KEY);
-      SESSION_KEYS.forEach(key => removeWrapperStorage(key));
-      await wrapperIdbRemove(SESSION_BUNDLE_KEY);
-      return true;
-    }
-
-    async function handleSessionRequest(data) {
-      let ok = true;
-      let session = null;
-      try {
-        if (data.type === 'GDL_SESSION_GET' || data.type === 'GDL_STORAGE_SYNC_REQUEST') {
-          session = await loadWrapperSessionBundle();
-          ok = !!session;
-        } else if (data.type === 'GDL_SESSION_SAVE' || data.type === 'GDL_STORAGE_SYNC_DATA') {
-          ok = await saveWrapperSessionBundle(data.session || data.values || {});
-          session = await loadWrapperSessionBundle(false);
-        } else if (data.type === 'GDL_SESSION_CLEAR' || data.type === 'GDL_STORAGE_CLEAR') {
-          ok = await clearWrapperSessionBundle();
-        }
-      } catch (e) {
-        ok = false;
-      }
-      postToFrame({ type: 'GDL_SESSION_RESULT', requestId: data.requestId, ok, session, geoSupported: canUseWrapperGeolocation() });
-    }
-
-    async function handleStorageRequest(data) {
-      let ok = true;
-      let value = null;
-      let values = {};
-      try {
-        if (data.type === 'GDL_STORAGE_GET') {
-          value = getWrapperStorage(data.key);
-        } else if (data.type === 'GDL_STORAGE_GET_MANY') {
-          (data.keys || []).forEach(key => { values[key] = getWrapperStorage(key); });
-        } else if (data.type === 'GDL_STORAGE_SET') {
-          ok = setWrapperStorage(data.key, data.value);
-          if (SESSION_KEYS.includes(data.key)) saveWrapperSessionBundle({ [data.key]: data.value });
-        } else if (data.type === 'GDL_STORAGE_SET_MANY') {
-          Object.keys(data.values || {}).forEach(key => { if (!setWrapperStorage(key, data.values[key])) ok = false; });
-          if (Object.keys(data.values || {}).some(key => SESSION_KEYS.includes(key))) saveWrapperSessionBundle(data.values || {});
-        } else if (data.type === 'GDL_STORAGE_REMOVE') {
-          ok = removeWrapperStorage(data.key);
-        } else if (data.type === 'GDL_STORAGE_REMOVE_MANY') {
-          (data.keys || []).forEach(key => { if (!removeWrapperStorage(key)) ok = false; });
-        }
-      } catch (e) {
-        ok = false;
-      }
-      if ((data.type === 'GDL_STORAGE_GET' && SESSION_KEYS.includes(data.key) && !value) ||
-          (data.type === 'GDL_STORAGE_GET_MANY' && (data.keys || []).some(key => SESSION_KEYS.includes(key)))) {
-        const bundle = await loadWrapperSessionBundle();
-        if (bundle) {
-          if (data.type === 'GDL_STORAGE_GET' && data.key === 'deviceToken') value = bundle.deviceToken || value;
-          else if (data.type === 'GDL_STORAGE_GET' && data.key === 'savedEmpId') value = bundle.empId || value;
-          else if (data.type === 'GDL_STORAGE_GET' && data.key === 'savedEmpName') value = bundle.empName || value;
-          else if (data.type === 'GDL_STORAGE_GET' && data.key === 'savedEmpLocation') value = bundle.empLocation || value;
-          else if (data.type === 'GDL_STORAGE_GET' && data.key === 'savedEmpType') value = bundle.empType || value;
-          if (data.type === 'GDL_STORAGE_GET_MANY') {
-            if ('savedEmpId' in values && !values.savedEmpId) values.savedEmpId = bundle.empId || '';
-            if ('savedEmpName' in values && !values.savedEmpName) values.savedEmpName = bundle.empName || '';
-            if ('savedEmpLocation' in values && !values.savedEmpLocation) values.savedEmpLocation = bundle.empLocation || '';
-            if ('savedEmpType' in values && !values.savedEmpType) values.savedEmpType = bundle.empType || '';
-            if ('deviceToken' in values && !values.deviceToken) values.deviceToken = bundle.deviceToken || '';
-          }
-        }
-      }
-      postToFrame({ type: 'GDL_STORAGE_RESULT', requestId: data.requestId, ok, value, values, geoSupported: canUseWrapperGeolocation() });
-    }
-
-    let wrapperGeoSamples = [];
-
-    function canUseWrapperGeolocation() {
-      return !!(navigator.geolocation && (window.isSecureContext || location.protocol === 'https:'));
-    }
-
-    function serializeGeoPosition(pos) {
-      if (!pos || !pos.coords) return null;
-      const lat = Number(pos.coords.latitude);
-      const lng = Number(pos.coords.longitude);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-      const accuracy = Number(pos.coords.accuracy);
-      return {
-        timestamp: pos.timestamp || Date.now(),
-        coords: {
-          latitude: lat,
-          longitude: lng,
-          accuracy: Number.isFinite(accuracy) ? accuracy : null,
-          altitude: pos.coords.altitude == null ? null : Number(pos.coords.altitude),
-          altitudeAccuracy: pos.coords.altitudeAccuracy == null ? null : Number(pos.coords.altitudeAccuracy),
-          heading: pos.coords.heading == null ? null : Number(pos.coords.heading),
-          speed: pos.coords.speed == null ? null : Number(pos.coords.speed)
-        }
-      };
-    }
-
-    function rememberWrapperGeo(pos) {
-      const serialized = serializeGeoPosition(pos);
-      if (!serialized) return null;
-      wrapperGeoSamples.push(serialized);
-      const cutoff = Date.now() - 30000;
-      wrapperGeoSamples = wrapperGeoSamples.filter(item => (item.timestamp || 0) >= cutoff).slice(-8);
-      return serialized;
-    }
-
-    function freshWrapperGeoSamples(maxAgeMs) {
-      const cutoff = Date.now() - (maxAgeMs || 15000);
-      return wrapperGeoSamples.filter(item => (item.timestamp || 0) >= cutoff);
-    }
-
-    function wrapperGeoErrorMessage(err) {
-      if (err && err.code === 1) return 'Location Blocked - allow Location for this app';
-      if (err && err.code === 2) return 'Location unavailable - move near a window and retry';
-      if (err && err.code === 3) return 'Still locating device...';
-      return 'Location Blocked';
-    }
-
-    function postWrapperGeoResult(data, payload) {
-      postToFrame(Object.assign({
-        type: 'GDL_GEO_RESULT',
-        requestId: data.requestId,
-        ok: false,
-        samples: [],
-        geoSupported: canUseWrapperGeolocation()
-      }, payload || {}));
-    }
-
-    function handleGeoSampleRequest(data) {
-      if (!data || !data.requestId) return;
-      if (!canUseWrapperGeolocation()) {
-        postWrapperGeoResult(data, {
-          ok: false,
-          geoSupported: false,
-          message: navigator.geolocation ? 'Open the secure app link to use location' : 'Location is not supported on this device'
-        });
-        return;
-      }
-
-      const cached = freshWrapperGeoSamples(10000);
-      if (cached.length) {
-        postWrapperGeoResult(data, { ok: true, samples: cached });
-        return;
-      }
-
-      const durationMs = Math.min(8000, Math.max(1500, Number(data.durationMs) || 3500));
-      const requestSamples = [];
-      let done = false;
-      let watchId = null;
-      let lastErrorMessage = '';
-
-      const add = pos => {
-        const serialized = rememberWrapperGeo(pos);
-        if (serialized) requestSamples.push(serialized);
-        return serialized;
-      };
-
-      const finish = (ok, message) => {
-        if (done) return;
-        done = true;
-        clearTimeout(timer);
-        if (watchId !== null) {
-          try { navigator.geolocation.clearWatch(watchId); } catch (e) {}
-        }
-        const samples = requestSamples.length ? requestSamples : freshWrapperGeoSamples(15000);
-        postWrapperGeoResult(data, {
-          ok: !!(ok || samples.length),
-          samples,
-          message: samples.length ? '' : (message || lastErrorMessage || 'Location Blocked')
-        });
-      };
-
-      const timer = setTimeout(() => finish(requestSamples.length > 0, ''), durationMs);
-
-      try {
-        watchId = navigator.geolocation.watchPosition(pos => {
-          const serialized = add(pos);
-          const acc = serialized && serialized.coords ? Number(serialized.coords.accuracy) : null;
-          if (acc && acc <= 80) finish(true, '');
-        }, err => {
-          lastErrorMessage = wrapperGeoErrorMessage(err);
-          if (!requestSamples.length && err && err.code === 1) finish(false, lastErrorMessage);
-        }, { enableHighAccuracy: true, maximumAge: 5000, timeout: durationMs + 2500 });
-
-        navigator.geolocation.getCurrentPosition(pos => {
-          const serialized = add(pos);
-          const acc = serialized && serialized.coords ? Number(serialized.coords.accuracy) : null;
-          if (acc && acc <= 120) finish(true, '');
-        }, err => {
-          lastErrorMessage = wrapperGeoErrorMessage(err);
-        }, { enableHighAccuracy: true, maximumAge: 5000, timeout: durationMs + 2500 });
-      } catch (e) {
-        finish(false, e && e.message ? e.message : 'Location Blocked');
-      }
-    }
-
-    function isIOSLike() {
-      const ua = navigator.userAgent || '';
-      return /iphone|ipad|ipod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-    }
-
-    function showSelfieLauncher(requestId, url) {
-      pendingSelfieLaunch = { requestId, url };
-      activeSelfieRequestId = requestId;
-      if (activeSelfieCloseTimer) {
-        clearInterval(activeSelfieCloseTimer);
-        activeSelfieCloseTimer = null;
-      }
-      postToFrame({ type: 'GDL_SELFIE_OPENED', requestId, needsTap: true });
-      const launcher = document.getElementById('selfie-launcher');
-      if (launcher) launcher.style.display = 'flex';
-    }
-
-    function openSelfieFromWrapper(data) {
-      const requestId = data.requestId || ('selfie_' + Date.now());
-      const title = encodeURIComponent(data.title || '');
-      const sub = encodeURIComponent(data.sub || '');
-      const url = './selfie.html?v=15.1&requestId=' + encodeURIComponent(requestId) + '&title=' + title + '&sub=' + sub;
-      if (isIOSLike()) {
-        showSelfieLauncher(requestId, url);
-        return;
-      }
-      const w = 420, h = 720;
-      const left = Math.max(0, (window.screen.width - w) / 2);
-      const top = Math.max(0, (window.screen.height - h) / 2);
-      try {
-        if (activeSelfiePopup && !activeSelfiePopup.closed) activeSelfiePopup.close();
-      } catch (e) {}
-      try {
-        activeSelfiePopup = window.open(url, 'selfieCapture_' + requestId, `width=${w},height=${h},left=${left},top=${top}`);
-      } catch (e) {
-        activeSelfiePopup = null;
-      }
-      activeSelfieRequestId = requestId;
-      if (activeSelfieCloseTimer) clearInterval(activeSelfieCloseTimer);
-      if (!activeSelfiePopup) {
-        showSelfieLauncher(requestId, url);
-        return;
-      }
-      postToFrame({ type: 'GDL_SELFIE_OPENED', requestId });
-      activeSelfieCloseTimer = setInterval(() => {
-        if (activeSelfiePopup && activeSelfiePopup.closed) {
-          clearInterval(activeSelfieCloseTimer);
-          activeSelfieCloseTimer = null;
-          postToFrame({ type: 'SELFIE_CANCELLED', requestId: activeSelfieRequestId });
-          activeSelfiePopup = null;
-          activeSelfieRequestId = '';
-        }
-      }, 700);
-    }
-
-    function launchPendingSelfie() {
-      const pending = pendingSelfieLaunch;
-      if (!pending) return;
-      const launcher = document.getElementById('selfie-launcher');
-      if (launcher) launcher.style.display = 'none';
-      pendingSelfieLaunch = null;
-      const w = 420, h = 720;
-      const left = Math.max(0, (window.screen.width - w) / 2);
-      const top = Math.max(0, (window.screen.height - h) / 2);
-      try {
-        activeSelfiePopup = window.open(pending.url, 'selfieCapture_' + pending.requestId, `width=${w},height=${h},left=${left},top=${top}`);
-      } catch (e) {
-        activeSelfiePopup = null;
-      }
-      activeSelfieRequestId = pending.requestId;
-      if (activeSelfieCloseTimer) clearInterval(activeSelfieCloseTimer);
-      if (!activeSelfiePopup) {
-        postToFrame({ type: 'SELFIE_CANCELLED', requestId: pending.requestId });
-        activeSelfieRequestId = '';
-        return;
-      }
-      activeSelfieCloseTimer = setInterval(() => {
-        if (activeSelfiePopup && activeSelfiePopup.closed) {
-          clearInterval(activeSelfieCloseTimer);
-          activeSelfieCloseTimer = null;
-          postToFrame({ type: 'SELFIE_CANCELLED', requestId: activeSelfieRequestId });
-          activeSelfiePopup = null;
-          activeSelfieRequestId = '';
-        }
-      }, 700);
-    }
-
-    function cancelPendingSelfie() {
-      const pending = pendingSelfieLaunch;
-      pendingSelfieLaunch = null;
-      const launcher = document.getElementById('selfie-launcher');
-      if (launcher) launcher.style.display = 'none';
-      postToFrame({ type: 'SELFIE_CANCELLED', requestId: pending ? pending.requestId : activeSelfieRequestId });
-      activeSelfieRequestId = '';
-    }
-
-    function forwardSelfieResult(data) {
-      const requestId = data.requestId || activeSelfieRequestId;
-      if (activeSelfieCloseTimer) {
-        clearInterval(activeSelfieCloseTimer);
-        activeSelfieCloseTimer = null;
-      }
-      pendingSelfieLaunch = null;
-      const launcher = document.getElementById('selfie-launcher');
-      if (launcher) launcher.style.display = 'none';
-      postToFrame({
-        type: data.type === 'SELFIE_CAPTURED' || data.type === 'GDL_SELFIE_CAPTURED' ? 'SELFIE_CAPTURED' : 'SELFIE_CANCELLED',
-        requestId,
-        image: data.image || ''
-      });
-      activeSelfiePopup = null;
-      activeSelfieRequestId = '';
-    }
-
-    function postNotifyPermissionStatus() {
-      const frame = document.getElementById('attendance-frame');
-      const permission = ('Notification' in window) ? Notification.permission : 'unsupported';
-      if (frame && frame.contentWindow) {
-        frame.contentWindow.postMessage({ type: 'GDL_NOTIFY_PERMISSION', permission }, '*');
-      }
-    }
-
-    async function requestWrapperNotificationPermission() {
-      if (!('Notification' in window) || !window.isSecureContext) {
-        postNotifyPermissionStatus();
-        return;
-      }
-      if (Notification.permission === 'default') {
-        await Notification.requestPermission();
-      }
-      postNotifyPermissionStatus();
-    }
-
-    function showWrapperNotification(payload) {
-      if (!payload || !('Notification' in window) || Notification.permission !== 'granted') return;
-      new Notification(payload.title || 'GDL Attendance', {
-        body: payload.body || '',
-        tag: payload.tag || 'gdl-attendance',
-        icon: './icons/icon-192.png',
-        badge: './icons/favicon-32.png'
-      });
-    }
-
-    window.addEventListener('message', (event) => {
-      const frame = frameEl();
-      const fromFrame = !!(frame && event.source === frame.contentWindow);
-      const fromSelfie = !!(activeSelfiePopup && event.source === activeSelfiePopup);
-      if (fromSelfie && event.data && typeof event.data === 'object' &&
-          (event.data.type === 'SELFIE_CAPTURED' || event.data.type === 'SELFIE_CANCELLED' ||
-           event.data.type === 'GDL_SELFIE_CAPTURED' || event.data.type === 'GDL_SELFIE_CANCELLED')) {
-        forwardSelfieResult(event.data);
-        return;
-      }
-      if (!fromFrame) return;
-      if (event.data === 'hideSplash') {
-        appReady = true;
-        hideLaunchRecovery();
-        return;
-      }
-      if (!event.data || typeof event.data !== 'object') return;
-      if (event.data.type === 'GDL_APP_READY') {
-        appReady = true;
-        hideLaunchRecovery();
-      }
-      else if (event.data.type === 'GDL_GEO_SAMPLE') handleGeoSampleRequest(event.data);
-      else if (event.data.type === 'GDL_CHILD_ERROR') {
-        lastWrapperError = event.data.message || 'App error';
-        updateRecoveryNote();
-      }
-    });
-
-    setTimeout(() => { if (!splashHidden) setSplashStatus('Opening attendance...'); }, 2500);
-    setTimeout(() => { hideSplash(); }, SPLASH_MAX_WAIT_MS);
-
-    if (!navigator.onLine) {
-      document.getElementById('app-wrapper').style.display = 'none';
-      document.getElementById('splash-screen').style.display = 'none';
-      document.getElementById('offline-fallback').style.display = 'flex';
-    }
-
-    window.addEventListener('online', () => {
-      if (document.getElementById('offline-fallback').style.display === 'flex') {
-        window.location.reload();
-      }
-    });
-
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js?v=15.2')
-          .then(reg => reg.update())
-          .catch(err => console.warn('SW registration failed:', err));
-      });
-    }
-
-    // ───── PWA Install Logic ─────
     let deferredPrompt = null;
     const installBtn = document.getElementById('install-btn');
 
@@ -936,6 +362,8 @@
       installBtn.style.display = 'none';
       deferredPrompt = null;
     });
-  </script>
+
+</script>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=turnstileReady&amp;render=explicit" async defer></script>
 </body>
 </html>
