@@ -1,57 +1,17 @@
-const CACHE_NAME = 'gdl-attendance-v15-2-eidcid-new3';
-
-const ASSETS = [
-  './',
-  './index.html',
-  './selfie.html',
-  './manifest.json',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
-  './icons/icon-maskable-512.png',
-  './icons/apple-touch-icon.png',
-  './icons/favicon-32.png'
-];
-
-self.addEventListener('install', event => {
-  self.skipWaiting(); // activate the new SW immediately instead of waiting for old tabs to close
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS))
-  );
-});
-
+// Attendance requires a network connection. Never cache login/challenge responses.
+self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', event => {
-  // Clean up old cache versions so stale assets never get served
-  event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)))
-    ).then(() => self.clients.claim())
-  );
+  event.waitUntil(caches.keys().then(keys => Promise.all(
+    keys.filter(key => key.startsWith('gdl-attendance-')).map(key => caches.delete(key))
+  )).then(() => self.clients.claim()));
 });
-
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
-
-  if (url.hostname === 'script.google.com' || url.hostname === 'script.googleusercontent.com') {
-    event.respondWith(fetch(event.request));
-    return;
+  if (url.origin !== self.location.origin || event.request.method !== 'GET') return;
+  if (event.request.mode === 'navigate') {
+    event.respondWith(fetch(event.request, {cache: 'no-store'}).catch(() => new Response(
+      '<!doctype html><html lang="en"><meta name="viewport" content="width=device-width"><title>Attendance offline</title><h1>You are offline</h1><p>Reconnect, then reload attendance.gdl.bt.</p></html>',
+      {status: 503, headers: {'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store'}}
+    )));
   }
-
-  if (event.request.mode === 'navigate' || url.pathname.endsWith('/index.html') || url.pathname.endsWith('/selfie.html')) {
-    event.respondWith(
-      fetch(event.request)
-        .then(response => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
-          return response;
-        })
-        .catch(() => caches.match(event.request))
-    );
-    return;
-  }
-
-  event.respondWith(
-    caches.match(event.request).then(response => {
-      return response || fetch(event.request);
-    })
-  );
 });
