@@ -198,7 +198,7 @@
       <span id="splash-status-text" role="status" aria-live="polite">Complete the security check to continue.</span>
     </div>
     <div id="captcha-widget" style="margin-top:24px;min-height:65px"></div>
-    <small style="margin-top:12px;color:#47554e">V15.9.3</small>
+    <small style="margin-top:12px;color:#47554e">V15.9.4</small>
   </div>
 
   <div id="offline-fallback">
@@ -275,7 +275,7 @@ function startFrame() {
   url.searchParams.set('bridgeToken',bridgeToken);
   frame.src=url.href;
   setTimeout(()=>{
-    if(!appReady)showGate(child ? 'The app connected but could not finish loading. Close and reopen the app.' : 'The attendance app did not connect. Close this app and reopen attendance.gdl.bt in Chrome or Safari.');
+    if(!child)showGate('The attendance app did not connect. Close this app and reopen attendance.gdl.bt in Chrome or Safari.');
   },60000);
 }
 function turnstileReady() {
@@ -302,11 +302,13 @@ window.addEventListener('message',event=>{
   if(data.type==='GDL_CAPTCHA_READY'){
     if(typeof data.requestId!=='string' || !/^[a-f0-9-]{36}$/.test(data.requestId))return;
     if(requestId===data.requestId)return;
+    const firstHandshake=!requestId;
     requestId=data.requestId;gateVerified=false;
     showGate('Complete the security check to continue.');
-    if(proof)deliverProof();else if(widgetId!==null)turnstile.reset(widgetId);
+    if(proof)deliverProof();else if(widgetId!==null && !firstHandshake)turnstile.reset(widgetId);
   }else if(data.type==='GDL_CAPTCHA_VERIFIED' && data.requestId===requestId){
     gateVerified=true;statusText.textContent='Loading attendance…';showApplication();
+    setTimeout(()=>{if(gateVerified && !appReady)showGate('The app could not finish loading. Close and reopen the app.');},30000);
   }else if(data.type==='GDL_CAPTCHA_ERROR' && data.requestId===requestId){
     gateVerified=false;showGate('Verification failed. Close and reopen the app to try again.');
   }else if(data.type==='GDL_APP_READY'){
@@ -320,8 +322,11 @@ window.addEventListener('message',event=>{
   }
 });
 window.addEventListener('offline',()=>showGate('You are offline. Reconnect and reopen the app.'));
-if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js?v=15.9.3',{updateViaCache:'none'}).catch(()=>{});
+if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js?v=15.9.4',{updateViaCache:'none'}).catch(()=>{});
 setTimeout(()=>{if(widgetId===null)showGate('Security check did not load. Check your connection and reopen the app.');},20000);
+
+    // Preload only the public shell. Its boot path waits for server CAPTCHA validation.
+    if(window.location.origin==='https://attendance.gdl.bt')startFrame();
 
     let deferredPrompt = null;
     const installBtn = document.getElementById('install-btn');
